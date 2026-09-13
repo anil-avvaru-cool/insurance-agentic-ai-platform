@@ -1,0 +1,4 @@
+bucket = "replacewithgloballyuniquestatebucket"
+key = "development/terraform.tfstate"
+region = "replace_with_region"
+allowed_account_ids = ["000000000000"]

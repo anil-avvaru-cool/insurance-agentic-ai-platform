@@ -14,12 +14,12 @@ import secrets
 
 
 class Application:
-    def __init__(self, store, core, language=None, catalogs=None, checkpoint_path=None):
+    def __init__(self, store, core, language=None, catalogs=None, checkpoint_path=None, checkpoints=None):
         self.store, self.core = store, core
         self.catalogs = catalogs if catalogs is not None else Catalogs(os.environ["CATALOGS_PATH"])
         self.language = language if language is not None else DisabledLanguage()
-        self.review_graph = ReviewWorkflow(checkpoint_path if checkpoint_path is not None else store.path + ".checkpoints")
-        self.graph = AutoWorkflow(self.catalogs, self.review_graph.path)
+        self.review_graph = ReviewWorkflow(checkpoint_path if checkpoint_path is not None else store.path + ".checkpoints", checkpoints)
+        self.graph = AutoWorkflow(self.catalogs, self.review_graph.path, checkpoints)
 
     def owned(self, db, conversation, owner):
         row = db.execute("SELECT * FROM conversations WHERE id=? AND owner=?",

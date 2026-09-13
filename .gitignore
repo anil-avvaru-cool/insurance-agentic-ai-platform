@@ -219,3 +219,15 @@ __marimo__/
 
 # Local synthetic application and core state
 local_*.sqlite3*
+
+# Terraform local inputs, state, plans and provider cache
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+*.tfbackend
+*.tfplan
+crash.log
+crash.*.log
+infra/terraform/bootstrap/remote_override.tf

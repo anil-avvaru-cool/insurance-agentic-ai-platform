@@ -1,0 +1,6 @@
+aws_region = "us_east_1_replace_with_valid_region"
+aws_account_id = "000000000000"
+project_name = "insurance"
+environment = "development"
+owner = "replace_with_owner"
+state_bucket_name = "replacewithgloballyuniquestatebucket"

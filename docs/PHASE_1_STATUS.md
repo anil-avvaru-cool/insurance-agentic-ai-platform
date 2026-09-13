@@ -29,10 +29,51 @@ silently written to the core.
 
 ## Still pending
 
+### Phase 1B Terraform foundation
+
+Added separate [bootstrap and development Terraform roots](../infra/terraform/README.md)
+with a pinned AWS provider and lock files. Bootstrap provisions private, encrypted,
+versioned S3 state storage; development uses encrypted remote state with native
+S3 locking and provisions private TLS-required PostgreSQL RDS, encrypted SQS/DLQ,
+and separate API, worker and action service identities. RDS manages its admin
+password; no secret value is passed through Terraform. Account, region, ownership,
+existing private subnets and database sizing/version are explicit inputs.
+
+Verification: Terraform **1.16.2**, AWS provider **6.27.0**; both roots passed
+`terraform validate`, formatting passed, and **five mocked plan tests passed**
+(state protection, private foundation, wrong VPC, single AZ and public-IP subnet
+rejection). Provider execution required local sockets outside the sandbox. Tests
+mock AWS resources/data, including IAM policy documents; they do not establish
+live IAM authorization or AWS provisioning. No account-backed plan or apply ran.
+
+The runbook includes bootstrap state migration, deployment plan review, runtime
+handoff and teardown. Account/network selection, private connectivity, runtime
+packaging, application persistence/queue migration, AgentCore and Bedrock/S3
+Vectors remain open. This completes the initial Terraform foundation slice,
+not the Phase 1B deployment gate.
+
+### Phase 1B PostgreSQL checkpoint seam
+
+The first 1B increment adds a selectable PostgreSQL checkpointer for planning
+and employee review, pins its dependencies, and separates schema migration from
+request processing. The existing application authorization and checkpoint
+reconciliation logic is shared by both backends. Application and synthetic core
+storage remain SQLite; this is not an AWS-ready distributed application.
+
+Verification: **16 unit tests and 22 local integration tests passed** after this
+change. A new PostgreSQL runner reuses all 22 journey cases, including reopening
+connections, employee interrupt/resume, and orphan checkpoint reconciliation.
+It correctly exits nonzero without `CHECKPOINT_TEST_POSTGRES_DSN`; no live
+PostgreSQL test ran. Docker is unavailable in this WSL environment. Actual
+process termination, RDS connectivity/failover and concurrent workers remain
+deployment acceptance work. See [the spike runbook](PHASE_1B_SPIKE.md).
+
+The earlier browser result below is 1A evidence; it was not rerun for this change.
+
 | Milestone | Remaining work / dependency |
 |---|---|
 | 1A live-model validation | Run the nine synthetic language evaluation cases with a configured model API key; offline mocks do not establish extraction accuracy or service-selection quality |
-| 1B deployment spike | AWS account/region and networking decisions; Terraform roots and backend; ECS/API Gateway, AgentCore adapter, PostgreSQL checkpoints, SQS; Bedrock knowledge base and S3 Vectors ingestion/retrieval verification |
+| 1B deployment spike (started) | PostgreSQL checkpoint adapter and recovery runner implemented; live recovery pending. Terraform foundation validated with mocks; live AWS plan, account/region and networking decisions; ECS/API Gateway, AgentCore adapter, SQS; Bedrock knowledge base and S3 Vectors ingestion/retrieval verification |
 | 1C staging | Real identity and delegated employee scope; approved claims sandbox; isolated action service identity; constrained evidence upload/quarantine/scanning; distributed outbox/leases/retries/DLQ; telemetry; CI/release automation; recovery and RAG/security evaluations |
 | 1D pilot | Approved rules/catalogs and language; staffed employee queue and deadlines; pilot cohort, numerical quality/latency/cost gates; production configuration, restore rehearsal and owner acceptance |
 | 1E property | Property schema, habitability/hazard rules, fixtures and evaluated routing after auto gates |
@@ -44,9 +85,9 @@ PostgreSQL recovery or AWS durability.
 The HTTP evidence-upload endpoint is deliberately not exposed until protected
 storage is implemented.
 
-## Verification
+## Earlier Phase 1A verification
 
-Verified this increment: **13 unit tests, 22 integration tests and one Chromium
+Verified the local 1A increment: **13 unit tests, 22 integration tests and one Chromium
 browser journey passed**. The browser exercised pre-auth help, authenticated
 intake, draft confirmation, a mock receipt, employee acceptance and customer
 resume with no JavaScript errors. The browser test ran outside the execution

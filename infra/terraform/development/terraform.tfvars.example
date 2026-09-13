@@ -1,0 +1,13 @@
+aws_region = "us_east_1_replace_with_valid_region"
+aws_account_id = "000000000000"
+project_name = "insurance"
+environment = "development"
+owner = "replace_with_owner"
+vpc_id = "replace_with_vpc_id"
+private_subnet_ids = ["replace_with_private_subnet_one", "replace_with_private_subnet_two"]
+postgres_engine_version = "replace_with_available_postgres_version"
+postgres_parameter_family = "replace_with_matching_postgres_family"
+db_instance_class = "db.t4g.micro"
+db_allocated_storage_gib = 20
+db_deletion_protection = true
+final_snapshot_identifier = "replacewithuniquefinalsnapshotname"

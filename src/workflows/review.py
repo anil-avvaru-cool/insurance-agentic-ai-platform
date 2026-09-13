@@ -1,6 +1,6 @@
 """Durable review interrupts. Business records authorize and reconcile resumes."""
 from typing import TypedDict
-from langgraph.checkpoint.sqlite import SqliteSaver
+from workflows.checkpoints import Checkpoints
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import interrupt, Command
 from insurance_domain.intake import DomainError
@@ -18,12 +18,13 @@ def review_node(state):
 
 
 class ReviewWorkflow:
-    def __init__(self, path):
+    def __init__(self, path, checkpoints=None):
         self.path = path
+        self.checkpoints = checkpoints if checkpoints is not None else Checkpoints("sqlite", path)
 
     def run(self, review, decision=None):
         config = {"configurable": {"thread_id": f'{review["id"]}_{review["version"]}'}}
-        with SqliteSaver.from_conn_string(self.path) as saver:
+        with self.checkpoints.connect() as saver:
             builder = StateGraph(ReviewState)
             builder.add_node("employee_review", review_node)
             builder.add_edge(START, "employee_review")

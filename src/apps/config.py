@@ -7,6 +7,7 @@ from apps.service import Application
 from adapters.insurance.synthetic import SyntheticCore
 from insurance_domain.urgency import screen
 from insurance_domain.intake import AutoDraft
+from workflows.checkpoints import configured_checkpoints
 
 
 def configured_application():
@@ -16,8 +17,8 @@ def configured_application():
     db_path, core_path = os.environ["APP_DB_PATH"], os.environ["CORE_DB_PATH"]
     if Path(db_path).resolve() == Path(core_path).resolve():
         raise ValueError("Core and application databases must be separate")
-    checkpoint_path = os.environ["CHECKPOINT_DB_PATH"]
-    if Path(checkpoint_path).resolve() in (Path(db_path).resolve(), Path(core_path).resolve()):
+    checkpoints = configured_checkpoints()
+    if checkpoints.backend == "sqlite" and Path(checkpoints.target).resolve() in (Path(db_path).resolve(), Path(core_path).resolve()):
         raise ValueError("Checkpoint database must be separate")
     from adapters.models.language import DisabledLanguage
     from adapters.models.openai import OpenAIAdapter
@@ -30,7 +31,7 @@ def configured_application():
     else:
         raise ValueError("Unsupported model provider")
     return Application(Store(db_path), SyntheticCore(os.environ["FIXTURES_PATH"], core_path),
-                       language=language, checkpoint_path=checkpoint_path)
+                       language=language, checkpoints=checkpoints)
 
 
 def configured_identities():

@@ -6,7 +6,7 @@ or external side effect executes inside replayable graph nodes.
 from dataclasses import asdict
 from typing import TypedDict
 from langgraph.graph import StateGraph, START, END
-from langgraph.checkpoint.sqlite import SqliteSaver
+from workflows.checkpoints import Checkpoints
 from insurance_domain.intake import AutoDraft, Fact
 from insurance_domain.urgency import screen
 
@@ -72,12 +72,13 @@ def build_graph(catalogs, checkpointer=None):
 
 
 class AutoWorkflow:
-    def __init__(self, catalogs, path):
+    def __init__(self, catalogs, path, checkpoints=None):
         self.catalogs, self.path = catalogs, path
+        self.checkpoints = checkpoints if checkpoints is not None else Checkpoints("sqlite", path)
 
     def invoke(self, state):
         # Application state is authoritative when recovering separate commits.
-        with SqliteSaver.from_conn_string(self.path) as saver:
+        with self.checkpoints.connect() as saver:
             graph = build_graph(self.catalogs, saver)
             # Clear channels absent from the authoritative snapshot. A prior
             # checkpoint may have committed before its application transaction.
