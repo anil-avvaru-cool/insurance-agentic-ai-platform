@@ -1,0 +1,8 @@
+{
+  "metadataAttributes": {
+    "audience": "customer",
+    "approved": true,
+    "source_id": "synthetic_service_v1",
+    "synthetic": true
+  }
+}

@@ -1,13 +1,21 @@
-aws_region = "us_east_1_replace_with_valid_region"
+# Replace account/network placeholders before planning. Verify RDS version in your region.
+aws_region = "us-east-1"
 aws_account_id = "000000000000"
 project_name = "insurance"
 environment = "development"
-owner = "replace_with_owner"
-vpc_id = "replace_with_vpc_id"
-private_subnet_ids = ["replace_with_private_subnet_one", "replace_with_private_subnet_two"]
-postgres_engine_version = "replace_with_available_postgres_version"
-postgres_parameter_family = "replace_with_matching_postgres_family"
+owner = "insurance_platform_team"
+vpc_id = "REPLACE_WITH_VPC_ID"
+private_subnet_ids = ["REPLACE_WITH_PRIVATE_SUBNET_A", "REPLACE_WITH_PRIVATE_SUBNET_B"]
+postgres_engine_version = "16.6"
+postgres_parameter_family = "postgres16"
 db_instance_class = "db.t4g.micro"
 db_allocated_storage_gib = 20
 db_deletion_protection = true
-final_snapshot_identifier = "replacewithuniquefinalsnapshotname"
+final_snapshot_identifier = "insurancedevelopmentfinal20260913"
+
+# First apply provisions KB, source/vector buckets, ECR and runtime IAM.
+enable_bedrock = true
+bedrock_model_id = "amazon.nova-lite-v1:0"
+# Publish the image, paste its digest, then enable and plan again.
+enable_agentcore_runtime = false
+agentcore_image_digest = ""

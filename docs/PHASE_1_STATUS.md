@@ -48,9 +48,30 @@ live IAM authorization or AWS provisioning. No account-backed plan or apply ran.
 
 The runbook includes bootstrap state migration, deployment plan review, runtime
 handoff and teardown. Account/network selection, private connectivity, runtime
-packaging, application persistence/queue migration, AgentCore and Bedrock/S3
-Vectors remain open. This completes the initial Terraform foundation slice,
+packaging, application persistence/queue migration, live AgentCore and Bedrock/S3
+Vectors deployment remain open; the resource increment below adds their definitions. This completes the initial Terraform foundation slice,
 not the Phase 1B deployment gate.
+
+### Phase 1B Bedrock and AgentCore resource increment
+
+Added optional Terraform for encrypted S3 documents and S3 Vectors, a Titan v2
+1024-dimension Bedrock knowledge base, approved-prefix S3 source and scoped
+service roles. ECR uses immutable tags; AgentCore is enabled separately after
+publishing an ARM64 image and supplying its digest. Local ignored tfvars/backend
+files now contain realistic development values and account/network placeholders.
+
+Added a minimal HTTP AgentCore container and opt-in Python probes for model
+listing, Nova Lite Converse, embeddings, ingestion polling, retrieval with source
+citations and runtime invocation. A synthetic corpus fixture exercises metadata
+filtering. These probes are separate from the application's language adapter and
+do not submit claims or migrate application persistence.
+
+Verification: development `terraform validate`, eight mocked development plans
+and 23 unit tests passed, including seven Bedrock/runtime tests; all 22 local
+integration journeys also passed. Docker is unavailable in this WSL distro. AWS provider
+execution and FastAPI TestClient required execution outside the sandbox. No
+account-backed plan/apply, image build/push, ingestion, live model call or runtime
+startup was performed. See [the deployment guide](BEDROCK_DEVELOPMENT.md).
 
 ### Phase 1B PostgreSQL checkpoint seam
 

@@ -1,6 +1,7 @@
-aws_region = "us_east_1_replace_with_valid_region"
+# Replace account/network placeholders before planning. Verify RDS version in your region.
+aws_region = "us-east-1"
 aws_account_id = "000000000000"
 project_name = "insurance"
 environment = "development"
-owner = "replace_with_owner"
-state_bucket_name = "replacewithgloballyuniquestatebucket"
+owner = "insurance_platform_team"
+state_bucket_name = "insurance000000000000tfstateuseast1"

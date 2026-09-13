@@ -257,6 +257,9 @@ Propagate correlation IDs across API, graph, runtime, and MCP calls. Record vers
 
 Measure cost per resolved request, intake completion, triage agreement and overrides, urgent-case misses, claim cycle time, handoff completion, privacy incidents, and quote/bundle conversion where applicable. Break results down by line of business, claim complexity, and deployment. Compare against matched baselines; adjust for catastrophe activity and customer mix. Distinguish released capacity from realized expense savings and avoid double-counting benefits.
 
+## Preview features
+Preview features are okay to use for POC/learning purpose.
+
 ## Delivery strategy
 
 Delivery phases, business measures, ownership, and portfolio assumptions are maintained in [Strategy](STRATEGY.md). Deployment readiness and recovery criteria are maintained in [Deployment topology](DEPLOYMENT_TOPOLOGY.md).

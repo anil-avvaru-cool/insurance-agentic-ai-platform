@@ -3,8 +3,10 @@
 These roots provision development prerequisites only: an encrypted, versioned,
 private S3 state bucket with TLS enforcement; private encrypted PostgreSQL RDS;
 SQS with a restricted DLQ; and separate ECS API, worker and action service roles.
-No containers, public endpoints, AgentCore runtime, knowledge base or application
-migration are deployed. The application still uses SQLite for business state.
+Optional Bedrock resources now add S3 document/vector storage, a knowledge base,
+ECR and an AgentCore smoke runtime. See the [deployment guide](../../docs/BEDROCK_DEVELOPMENT.md)
+for image publishing, tfvars and model scripts. The application still uses SQLite
+for business state; application migration and ECS/API deployment remain open.
 
 Configuration is explicit in ignored `terraform.tfvars` and backend files copied
 from the examples. Terraform does not automatically load the application `.env`;
@@ -110,8 +112,8 @@ See [RDS provider arguments](https://registry.terraform.io/providers/hashicorp/a
 
 The API role can only send to the task queue; the worker can receive, delete,
 change visibility and read queue attributes. The action service role has no
-permissions until its core sandbox contract is approved. Container execution
-roles and AgentCore identity are later work. SQS has a five-receive DLQ threshold,
+permissions until its core sandbox contract is approved. ECS container execution
+roles remain later work; the optional AgentCore identity is defined separately. SQS has a five-receive DLQ threshold,
 300-second visibility and long polling. The future worker must extend visibility,
 retain idempotency, implement retries and establish a staffed DLQ recovery path.
 These queue settings do not implement a distributed outbox or worker.

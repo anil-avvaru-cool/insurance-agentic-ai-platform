@@ -1,0 +1,4 @@
+SYNTHETIC DEVELOPMENT FIXTURE — not an insurer policy or production guidance.
+The demonstration service can collect a draft auto loss report and send a confirmed
+snapshot for employee review. A receipt does not establish coverage or assign a claim.
+For this demonstration, customers can resume their intake and inspect task status.
