@@ -1,4 +1,4 @@
-"""Required local configuration; never load cloud credentials or model secrets."""
+"""Explicit synthetic-local configuration with an optional model provider."""
 import json
 import os
 from pathlib import Path
@@ -16,7 +16,21 @@ def configured_application():
     db_path, core_path = os.environ["APP_DB_PATH"], os.environ["CORE_DB_PATH"]
     if Path(db_path).resolve() == Path(core_path).resolve():
         raise ValueError("Core and application databases must be separate")
-    return Application(Store(db_path), SyntheticCore(os.environ["FIXTURES_PATH"], core_path))
+    checkpoint_path = os.environ["CHECKPOINT_DB_PATH"]
+    if Path(checkpoint_path).resolve() in (Path(db_path).resolve(), Path(core_path).resolve()):
+        raise ValueError("Checkpoint database must be separate")
+    from adapters.models.language import DisabledLanguage
+    from adapters.models.openai import OpenAIAdapter
+    provider = os.environ["LLM_PROVIDER"]
+    if provider == "disabled":
+        language = DisabledLanguage()
+    elif provider == "openai":
+        language = OpenAIAdapter(os.environ["LLM_MODEL"], os.environ["OPENAI_API_KEY"],
+                                 float(os.environ["LLM_TIMEOUT_SECONDS"]), int(os.environ["LLM_MAX_OUTPUT_TOKENS"]))
+    else:
+        raise ValueError("Unsupported model provider")
+    return Application(Store(db_path), SyntheticCore(os.environ["FIXTURES_PATH"], core_path),
+                       language=language, checkpoint_path=checkpoint_path)
 
 
 def configured_identities():

@@ -6,6 +6,7 @@ or external side effect executes inside replayable graph nodes.
 from dataclasses import asdict
 from typing import TypedDict
 from langgraph.graph import StateGraph, START, END
+from langgraph.checkpoint.sqlite import SqliteSaver
 from insurance_domain.intake import AutoDraft, Fact
 from insurance_domain.urgency import screen
 
@@ -48,23 +49,38 @@ def intake_node(state):
             "stage": "awaiting_customer" if missing else "awaiting_confirmation"}
 
 
-def triage_node(state):
+def triage_node(state, catalogs):
     urgency = state["urgency"]
     return {"stage": "awaiting_review", "triage": {
         **urgency,
-        "recommended_team": "auto_priority" if urgency["priority"] == "urgent" else "auto_standard",
-        "review_required": True,
+        "recommended_team": catalogs.team(urgency["priority"]),
+        "review_required": True, "catalog_version": catalogs.data["version"],
     }}
 
 
-def build_graph():
+def build_graph(catalogs, checkpointer=None):
     graph = StateGraph(State)
     graph.add_node("urgency_screening", urgency_node)
     graph.add_node("intake_validation", intake_node)
-    graph.add_node("triage_recommendation", triage_node)
+    graph.add_node("triage_recommendation", lambda state: triage_node(state, catalogs))
     graph.add_edge(START, "urgency_screening")
     graph.add_conditional_edges("urgency_screening", lambda s: "triage_recommendation"
                                if s.get("receipt") else "intake_validation")
     graph.add_edge("intake_validation", END)
     graph.add_edge("triage_recommendation", END)
-    return graph.compile()
+    return graph.compile(checkpointer=checkpointer)
+
+
+class AutoWorkflow:
+    def __init__(self, catalogs, path):
+        self.catalogs, self.path = catalogs, path
+
+    def invoke(self, state):
+        # Application state is authoritative when recovering separate commits.
+        with SqliteSaver.from_conn_string(self.path) as saver:
+            graph = build_graph(self.catalogs, saver)
+            # Clear channels absent from the authoritative snapshot. A prior
+            # checkpoint may have committed before its application transaction.
+            authoritative = {key: None for key in State.__annotations__}
+            authoritative.update(state)
+            return graph.invoke(authoritative, {"configurable": {"thread_id": state["conversation_ref"] + "_planning"}})

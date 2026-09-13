@@ -14,6 +14,13 @@ small {color: #526570} #notice {min-height: 1.5rem}
 <h1>Claims intake</h1>
 <p>Local synthetic demonstration. Use fixture references only. Receipts do not represent real claims.</p>
 <section>
+<h2>Help before signing in</h2>
+<p>This local demonstration does not dispatch emergency assistance.</p>
+<label>Injury reported <select id="help_injury"><option>unknown</option><option>yes</option><option>no</option></select></label>
+<label>Vehicle drivable <select id="help_drivable"><option>unknown</option><option>yes</option><option>no</option></select></label>
+<button id="help">Request help</button><pre id="help_result"></pre>
+</section>
+<section>
 <h2>Session</h2>
 <label>Access token <input id="token" type="password" autocomplete="off"></label>
 <small>Use a local token from your configuration. It stays in this page’s memory.</small>
@@ -23,6 +30,9 @@ small {color: #526570} #notice {min-height: 1.5rem}
 </section>
 <section>
 <h2>Report an auto loss</h2>
+<label>Tell us what happened or ask a service question <textarea id="message_text"></textarea></label>
+<button id="send_text">Send message</button>
+<p>Extracted facts need your review. Check the fields below and save them to confirm or correct them.</p>
 <p>Complete the facts you know, then save. Blank fields remain missing. Select “unknown” when injury or drivability is uncertain.</p>
 <div class="fields" id="fields"></div>
 <label><input id="accurate" type="checkbox" style="width:auto"> I confirm the entered facts reflect my report.</label>
@@ -45,7 +55,8 @@ small {color: #526570} #notice {min-height: 1.5rem}
 </section>
 <script>
 const $ = id => document.getElementById(id);
-let draft = null, task = null;
+let draft = null, task = null, helpToken = null;
+let helpRequestId = null, helpPayload = null;
 const fields = ['policy_ref','incident_at','description','location_ref','vehicle_ref','contact_ref','injury_reported','drivable'];
 for (const name of fields) {
   const label = document.createElement('label'); label.textContent = name.replaceAll('_',' ');
@@ -81,7 +92,14 @@ async function send(message) {
   const data = await api(path('/messages'), {message_id: crypto.randomUUID().replaceAll('-','_'), expected_version:draft.draft_version, ...message});
   task = data.task_ref; $('task').textContent = JSON.stringify(data,null,2); $('notice').textContent = 'Queued. Run the local worker, then refresh.';
 }
-action('create', async () => { const data = await api('/v1/conversations',{}); $('conversation').value = data.conversation_ref; showDraft(data); });
+action('create', async () => { const data = await api('/v1/conversations',helpToken ? {help_token:helpToken} : {}); helpToken=null; $('conversation').value = data.conversation_ref; showDraft(data); });
+action('help', async () => {
+  const payload = JSON.stringify([$('help_injury').value, $('help_drivable').value]);
+  if (payload !== helpPayload) { helpRequestId=crypto.randomUUID().replaceAll('-',''); helpPayload=payload; }
+  const data = await api('/v1/help', {request_id:helpRequestId, injury_reported:$('help_injury').value, drivable:$('help_drivable').value});
+  helpToken=data.help_token; $('help_result').textContent=data.message+' Priority: '+data.priority;
+});
+action('send_text', async () => send({intent:'auto',text:$('message_text').value}));
 action('resume', async () => showDraft(await api(path())));
 action('save', async () => {
   if (!$('accurate').checked) throw new Error('Confirm the entered facts before saving.');
@@ -103,6 +121,7 @@ for (const button of document.querySelectorAll('[data-intent]')) button.onclick 
   catch(error) { $('notice').textContent=error.message; }
 };
 action('reviews', async () => {
+  const catalog = await api('/v1/catalogs/teams');
   const data = await api('/v1/reviews'); $('queue').replaceChildren();
   if (!data.items.length) $('queue').textContent='No pending reviews.';
   for (const review of data.items) {
@@ -110,7 +129,7 @@ action('reviews', async () => {
     pre.textContent=JSON.stringify(review,null,2); card.append(pre);
     const note=document.createElement('textarea'); note.placeholder='Decision reason'; note.setAttribute('aria-label','Decision reason'); card.append(note);
     const team=document.createElement('select'); team.setAttribute('aria-label','Amended team');
-    for (const name of ['auto_standard','auto_priority']) { const option=document.createElement('option'); option.value=name; option.textContent=name; team.append(option); } card.append(team);
+    for (const name of catalog.teams) { const option=document.createElement('option'); option.value=name; option.textContent=name; team.append(option); } card.append(team);
     for (const decision of ['accept','amend','reject','request_information']) {
       const button=document.createElement('button'); button.textContent=decision.replaceAll('_',' '); card.append(button);
       button.onclick=async () => {try {

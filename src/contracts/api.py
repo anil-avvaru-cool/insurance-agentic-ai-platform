@@ -16,14 +16,19 @@ class FactInput(Contract):
 
 class Message(Contract):
     message_id: str = Field(min_length=1, max_length=100, pattern=r"^[A-Za-z0-9_]+$")
-    intent: Literal["intake", "policy_status", "claim_status", "service", "employee_help"]
+    intent: Literal["intake", "policy_status", "claim_status", "service", "employee_help", "auto"]
+    text: str | None = Field(default=None, min_length=1, max_length=8000)
     expected_version: int = Field(ge=1)
     facts: dict[str, FactInput] = Field(default_factory=dict)
     object_ref: str | None = Field(default=None, max_length=100)
-    question: Literal["report_loss", "coverage", "other"] | None = None
+    question: str | None = Field(default=None, min_length=1, max_length=100)
 
     @model_validator(mode="after")
     def validate_facts(self):
+        if (self.intent == "auto") != (self.text is not None):
+            raise ValueError("auto_requires_text")
+        if self.intent == "auto" and (self.facts or self.object_ref or self.question):
+            raise ValueError("auto_requires_text_only")
         if set(self.facts) - set(AUTO_FIELDS):
             raise ValueError("invalid_field")
         if self.facts and self.intent != "intake":
@@ -40,7 +45,7 @@ class ReviewDecision(Contract):
     decision_id: str = Field(min_length=1, max_length=100, pattern=r"^[A-Za-z0-9_]+$")
     expected_version: int = Field(ge=1)
     decision: Literal["accept", "amend", "reject", "request_information"]
-    recommended_team: Literal["auto_standard", "auto_priority"] | None = None
+    recommended_team: str | None = Field(default=None, min_length=1, max_length=100)
     note: str = Field(min_length=1, max_length=1000)
 
     @model_validator(mode="after")
@@ -48,3 +53,13 @@ class ReviewDecision(Contract):
         if (self.decision == "amend") != (self.recommended_team is not None):
             raise ValueError("team_requires_amendment")
         return self
+
+
+class HelpRequest(Contract):
+    request_id: str = Field(pattern=r"^[a-f0-9]{32}$")
+    injury_reported: Literal["yes", "no", "unknown"]
+    drivable: Literal["yes", "no", "unknown"]
+
+
+class ConversationCreate(Contract):
+    help_token: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")

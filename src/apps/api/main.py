@@ -6,7 +6,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from apps.config import configured_application, configured_identities
-from contracts.api import Message, IntakeConfirmation, ReviewDecision
+from contracts.api import Message, IntakeConfirmation, ReviewDecision, HelpRequest, ConversationCreate
 from insurance_domain.intake import DomainError
 
 
@@ -51,9 +51,17 @@ def create_app(application=None, identities=None):
     def index():
         return Path(__file__).parents[1].joinpath("web/index.html").read_text()
 
+    @app.post("/v1/help", status_code=202)
+    def help_request(body: HelpRequest):
+        return application.help(body.model_dump())
+
+    @app.get("/v1/catalogs/teams")
+    def teams(reviewer=Depends(employee)):
+        return {"version": application.catalogs.data["version"], "teams": application.catalogs.teams}
+
     @app.post("/v1/conversations", status_code=201)
-    def create(owner=Depends(customer)):
-        return application.create(owner)
+    def create(body: ConversationCreate | None = None, owner=Depends(customer)):
+        return application.create(owner, body.help_token if body else None)
 
     @app.get("/v1/conversations/{conversation}")
     def get_conversation(conversation: str, owner=Depends(customer)):

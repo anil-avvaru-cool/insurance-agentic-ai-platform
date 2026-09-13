@@ -66,14 +66,24 @@ The tests use temporary databases and synthetic identities. They do not need
   review proposals, and audited decisions. A separate SQLite mock core persists
   idempotent receipts. Database paths come from configuration.
 - LangGraph performs pure urgency/intake/triage transitions. Application records
-  persist pauses and resume context; a persistent LangGraph checkpointer and
-  `interrupt()`/`Command` review flow remain pending.
+  authorize pauses and resume context. A separate SQLite LangGraph checkpointer
+  persists planning and `interrupt()`/`Command` employee reviews across restarts.
+  Application records reconcile checkpoints left by rolled-back transactions.
 - Static bearer fixtures enforce customer ownership. Employees have access to
   the single synthetic queue. Production identity, reviewer scope delegation,
   and workload/action-service isolation remain pending.
-- Inputs are structured facts with explicit intents. Natural-language extraction,
-  model generation, RAG, evidence uploads, and pre-authentication help remain
-  pending. The one process FAQ is synthetic and is not an approved RAG corpus.
+- Inputs support structured facts and optional natural-language interpretation
+  through the OpenAI Responses adapter. Extracted facts stay unconfirmed until
+  customer review; errors and unsupported requests produce employee handoffs.
+  `LLM_PROVIDER=disabled` keeps the demo offline. Live model quality evaluation
+  requires a configured key and remains pending.
+- Versioned local customer sources and team catalogs come from `CATALOGS_PATH`.
+  Source approval, audience, line, and effective dates filter service answers.
+  These synthetic sources are not a production-approved RAG corpus; Bedrock
+  retrieval and protected evidence uploads remain later milestones.
+- `/v1/help` accepts only injury/drivability status before authentication. Its
+  random request ID deduplicates retries; its capability token attaches the
+  handoff to one authenticated owner. Keep both values private.
 - Material fact changes invalidate pending review versions. Explicit urgency is
   retained across edits. Facts reported after submission remain local review
   context; the receipt identifies the original submitted draft version.
@@ -87,3 +97,30 @@ Source layout: `src/contracts`, `src/insurance_domain`, `src/workflows`,
 `src/apps/{api,web,worker,action_service}`, and `src/adapters/insurance`.
 Synthetic fixtures and urgency rules live in `policies`; they require claims
 owner approval before production use.
+
+## Additional 1A verification
+
+Install Chromium and its OS dependencies, then run the browser journey:
+
+```sh
+uv run --locked playwright install --with-deps chromium
+PYTHONPATH=src uv run --locked python -m unittest discover -s tests/browser -v
+```
+
+The browser test starts a temporary localhost API and processes work through the
+real worker methods. It requires permission to bind sockets and launch Chromium.
+On Ubuntu 26.04 the pinned Playwright release needs
+`PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64` for its fallback browser.
+
+To evaluate the configured model against nine synthetic language cases, set
+`OPENAI_API_KEY` and the model settings from `example.env`, then run:
+
+```sh
+PYTHONPATH=src uv run --env-file .env --locked python tests/evaluation/run_language.py
+```
+
+This command makes paid provider calls, reports model/prompt/catalog versions,
+usage and latency, and exits nonzero if any case fails. Offline tests use mocked
+provider responses and verify contracts and workflow controls; they do not measure
+live language quality. The evaluation does not establish production readiness.
+The transport follows the official [Structured Outputs contract](https://developers.openai.com/api/docs/guides/structured-outputs).

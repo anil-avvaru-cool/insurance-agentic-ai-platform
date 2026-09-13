@@ -4,13 +4,22 @@ import json
 from apps.storage import reference, encode
 from apps.action_service.service import prepare, execute
 from insurance_domain.intake import DomainError, Fact
-from workflows.auto import build_graph, draft_from
+from workflows.auto import AutoWorkflow, draft_from
+from workflows.review import ReviewWorkflow
+from adapters.models.language import DisabledLanguage
+from insurance_domain.catalogs import Catalogs
+import os
+import hashlib
+import secrets
 
 
 class Application:
-    def __init__(self, store, core):
+    def __init__(self, store, core, language=None, catalogs=None, checkpoint_path=None):
         self.store, self.core = store, core
-        self.graph = build_graph()
+        self.catalogs = catalogs if catalogs is not None else Catalogs(os.environ["CATALOGS_PATH"])
+        self.language = language if language is not None else DisabledLanguage()
+        self.review_graph = ReviewWorkflow(checkpoint_path if checkpoint_path is not None else store.path + ".checkpoints")
+        self.graph = AutoWorkflow(self.catalogs, self.review_graph.path)
 
     def owned(self, db, conversation, owner):
         row = db.execute("SELECT * FROM conversations WHERE id=? AND owner=?",
@@ -19,15 +28,51 @@ class Application:
             raise DomainError("not_found")
         return json.loads(row["state"])
 
-    def create(self, owner):
+    def create(self, owner, help_token=None):
+        if help_token:
+            with self.store.transaction() as db:
+                row = db.execute("SELECT * FROM help_sessions WHERE token_hash=?",
+                                 (hashlib.sha256(help_token.encode()).hexdigest(),)).fetchone()
+                if row is None:
+                    raise DomainError("not_found")
+                conversation = db.execute("SELECT * FROM conversations WHERE id=?", (row["conversation"],)).fetchone()
+                if conversation["owner"] not in ("preauth", owner):
+                    raise DomainError("not_found")
+                db.execute("UPDATE conversations SET owner=? WHERE id=?", (owner, conversation["id"]))
+                return {"conversation_ref": conversation["id"], **self.customer_state(json.loads(conversation["state"]))}
         conversation = reference("conversation")
-        state = {"schema_version": "1", "workflow_version": "auto_local_v1",
+        state = {"schema_version": "1", "workflow_version": "auto_local_v2",
                  "conversation_ref": conversation, "intake_ref": reference("intake"),
                  "version": 1, "facts": {}, "receipt": None, "stage": "awaiting_customer"}
         state = self.graph.invoke(state)
         with self.store.transaction() as db:
             db.execute("INSERT INTO conversations VALUES (?,?,?)", (conversation, owner, encode(state)))
         return {"conversation_ref": conversation, **self.customer_state(state)}
+
+    def help(self, request):
+        # request_id is a client-generated capability; only status enums are retained.
+        digest = hashlib.sha256(encode(request).encode()).hexdigest()
+        with self.store.transaction() as db:
+            existing = db.execute("SELECT * FROM help_sessions WHERE request_id=?", (request["request_id"],)).fetchone()
+            if existing:
+                if existing["payload_hash"] != digest:
+                    raise DomainError("idempotency_conflict")
+                return json.loads(existing["result"])
+            conversation, intake = reference("conversation"), reference("intake")
+            state = {"schema_version": "1", "workflow_version": "auto_local_v2",
+                     "conversation_ref": conversation, "intake_ref": intake, "version": 1,
+                     "facts": {name: asdict(Fact(request[name], "preauth_status", False))
+                               for name in ("injury_reported", "drivable")}, "receipt": None}
+            state = self.graph.invoke(state)
+            db.execute("INSERT INTO conversations VALUES (?,?,?)", (conversation, "preauth", encode(state)))
+            self.upsert_review(db, conversation, state, "urgency" if state["handoff_required"] else "service",
+                               {**state["urgency"], "reason": "preauth_help"})
+            token = secrets.token_hex(32)
+            result = {"help_token": token, "priority": state["urgency"]["priority"],
+                      "review_pending": True, "message": self.catalogs.data["help_message"]}
+            db.execute("INSERT INTO help_sessions VALUES (?,?,?,?,?)",
+                       (request["request_id"], digest, hashlib.sha256(token.encode()).hexdigest(), conversation, encode(result)))
+            return result
 
     @staticmethod
     def customer_state(state):
@@ -90,6 +135,10 @@ class Application:
             db.execute("UPDATE reviews SET version=?,status='pending',proposal=? WHERE id=?",
                        (state["version"], encode(proposal), row["id"]))
 
+        review = db.execute("SELECT * FROM reviews WHERE conversation=? AND kind=?", (conversation, kind)).fetchone()
+        if review["status"] == "pending" and kind != "submission":
+            self.review_graph.run(review)
+
     def work_once(self):
         # Local transaction lock provides serialization and automatic rollback
         # on worker death. AWS needs SQS leases/fencing and a separate dispatcher.
@@ -118,12 +167,47 @@ class Application:
             msg = payload["message"]
             if msg["expected_version"] != state["version"]:
                 raise DomainError("stale_version")
-            if msg["intent"] == "intake":
+            if msg["intent"] == "auto":
+                triggers = [name for name, phrases in self.catalogs.data["urgent_phrases"].items()
+                            if any(phrase in msg["text"].casefold() for phrase in phrases)]
+                if triggers:
+                    state['version'] += 1
+                    changed = True
+                    state.pop('review_outcome', None)
+                    db.execute("UPDATE reviews SET status='stale' WHERE conversation=? AND kind!='service'", (conversation,))
+                    db.execute("UPDATE reviews SET version=? WHERE conversation=? AND kind='service' AND status='pending'",
+                               (state['version'], conversation))
+                    state["urgency"]["priority"] = "urgent"
+                    state["urgency"]["reason_codes"] = sorted(set(state["urgency"]["reason_codes"]) | set(triggers))
+                    state["urgency"]["evidence_refs"] = sorted(set(state["urgency"]["evidence_refs"]) | {msg["message_id"]})
+                    state["handoff_required"] = True
+                    self.upsert_review(db, conversation, state, "urgency", state["urgency"])
+                msg = dict(msg)
+                try:
+                    interpreted, metadata = self.language.interpret(msg["text"], self.catalogs.sources())
+                    interpreted.grounded(msg["text"])
+                    msg.update(intent=interpreted.intent, object_ref=interpreted.object_ref,
+                               question=interpreted.source_ref,
+                               facts={f.name: {"value": f.value, "confirmed": False,
+                                   "conflicting": bool(state["facts"].get(f.name) and
+                                       state["facts"][f.name]["value"] != f.value)} for f in interpreted.facts})
+                    candidate = draft_from(state)
+                    for name, fact in msg["facts"].items():
+                        candidate = candidate.update(name, Fact(source_ref=msg["message_id"], **fact))
+                    self.core.validate_draft(owner, candidate)
+                    if msg["intent"] == "policy_status":
+                        self.core.authorize(owner, "policies", msg["object_ref"])
+                    elif msg["intent"] == "claim_status":
+                        self.core.claim_status(owner, msg["object_ref"])
+                    state["model_run"] = metadata
+                except DomainError:
+                    msg.update(intent="employee_help", facts={})
+            if msg["intent"] == "intake" or msg["facts"]:
                 draft = draft_from(state)
                 for name, fact in msg["facts"].items():
                     draft = draft.update(name, Fact(source_ref=msg["message_id"], **fact))
                 self.core.validate_draft(owner, draft)
-                changed = draft.facts != draft_from(state).facts
+                changed = changed or draft.facts != draft_from(state).facts
                 state["facts"] = {key: asdict(fact) for key, fact in draft.facts}
                 if changed:
                     state["version"] += 1
@@ -131,18 +215,19 @@ class Application:
                     db.execute("UPDATE reviews SET version=? WHERE conversation=? AND kind='service' AND status='pending'",
                                (state["version"], conversation))
                     db.execute("UPDATE reviews SET status='stale' WHERE conversation=? AND kind!='service'", (conversation,))
-            elif msg["intent"] == "policy_status":
+            if msg["intent"] == "policy_status":
                 policy = self.core.authorize(owner, "policies", msg["object_ref"])
                 answer = {"status": policy["status"], "source_ref": msg["object_ref"],
                           "source_version": policy["source_version"], "synthetic": True,
                           "message": "Policy status is not a coverage determination."}
             elif msg["intent"] == "claim_status":
                 answer = self.core.claim_status(owner, msg["object_ref"])
-            elif msg["intent"] == "service" and msg["question"] == "report_loss":
-                answer = {"message": "Collect the incident facts, review the draft, then confirm submission. "
-                          "A saved draft is not a submitted claim.", "source_ref": "local_service_v1",
-                          "synthetic": True}
-            else:
+            elif msg["intent"] == "service":
+                try:
+                    answer = self.catalogs.answer(msg["question"])
+                except DomainError:
+                    msg["intent"] = "employee_help"
+            if msg["intent"] == "employee_help":
                 previous = db.execute("SELECT status FROM reviews WHERE conversation=? AND kind='service'",
                                       (conversation,)).fetchone()
                 if previous and previous["status"] != "pending":
@@ -159,7 +244,7 @@ class Application:
                 return {**self.customer_state(state), "message": "Submission outcome unknown; reconciliation required."}, "awaiting_review"
             state["receipt"] = receipt
 
-        if answer is None and (changed or payload["kind"] == "confirmation" or not state.get("receipt")):
+        if changed or (answer is None and (payload["kind"] == "confirmation" or not state.get("receipt"))):
             state.update(self.graph.invoke(state))
         if state["handoff_required"]:
             self.upsert_review(db, conversation, state, "urgency", state["urgency"])
@@ -235,13 +320,16 @@ class Application:
             if decision["decision"] == "amend":
                 if review["kind"] != "triage":
                     raise DomainError("invalid_amendment")
-                if state["urgency"]["priority"] == "urgent" and decision["recommended_team"] != "auto_priority":
+                if decision["recommended_team"] not in self.catalogs.teams:
+                    raise DomainError("invalid_team")
+                if state["urgency"]["priority"] == "urgent" and decision["recommended_team"] != self.catalogs.team("urgent"):
                     raise DomainError("urgency_floor")
                 proposal["recommended_team"] = decision["recommended_team"]
             result = {"review_ref": review_id, "decision": decision["decision"],
                       "assignment_confirmed": False}
             if decision["decision"] in ("accept", "amend"):
                 result["reviewed_recommendation"] = proposal
+            self.review_graph.run(review, {"reviewer": reviewer, **decision})
             db.execute("UPDATE reviews SET status=? WHERE id=?", (decision["decision"], review_id))
             db.execute("INSERT INTO decisions VALUES (?,?,?,?,?)",
                        (decision["decision_id"], review_id, reviewer, encode(decision), encode(result)))

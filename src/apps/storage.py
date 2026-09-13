@@ -22,6 +22,9 @@ class Store:
         self.path = path
         with self.transaction() as db:
             db.executescript('''
+                CREATE TABLE IF NOT EXISTS help_sessions (
+                    request_id TEXT PRIMARY KEY, payload_hash TEXT NOT NULL, token_hash TEXT UNIQUE NOT NULL,
+                    conversation TEXT NOT NULL, result TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS conversations (
                     id TEXT PRIMARY KEY, owner TEXT NOT NULL, state TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS tasks (

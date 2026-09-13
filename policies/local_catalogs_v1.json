@@ -1,0 +1,48 @@
+{
+  "version": "local_catalogs_v1",
+  "production_approved": false,
+  "teams": [
+    "auto_standard",
+    "auto_priority"
+  ],
+  "routing": {
+    "routine": "auto_standard",
+    "urgent": "auto_priority"
+  },
+  "sources": [
+    {
+      "id": "report_loss",
+      "version": "1",
+      "approved": true,
+      "audience": "customer",
+      "line": "auto",
+      "effective_from": "2026-01-01",
+      "effective_until": "2027-01-01",
+      "text": "Collect the incident facts, review the draft, then confirm submission. A saved draft is not a submitted claim."
+    },
+    {
+      "id": "receipt",
+      "version": "1",
+      "approved": true,
+      "audience": "customer",
+      "line": "auto",
+      "effective_from": "2026-01-01",
+      "effective_until": "2027-01-01",
+      "text": "A received intake has a receipt. An employee reviews the recommendation; a recommendation does not confirm claim assignment."
+    }
+  ],
+  "help_message": "For immediate danger, contact local emergency services. This local demo does not dispatch assistance. Sign in to attach this help request to your conversation.",
+  "urgent_phrases": {
+    "injury_reported": [
+      "i am injured",
+      "i\u2019m injured",
+      "i was hurt",
+      "someone is injured"
+    ],
+    "drivable": [
+      "car cannot be driven",
+      "car won't drive",
+      "vehicle is undrivable"
+    ]
+  }
+}

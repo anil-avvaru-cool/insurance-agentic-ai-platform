@@ -1,6 +1,6 @@
 # Phase 1 Implementation Guide — Service, Claims Intake, and Triage on AWS
 
-**Status:** Milestone 1A in progress: local authenticated APIs, durable SQLite tasks/actions/reviews, synthetic core receipts, pure LangGraph transitions, and minimal interfaces implemented. Model/RAG integration, graph checkpoints/interrupts, evidence handling, and AWS milestones remain pending. See [implementation status](PHASE_1_STATUS.md).  
+**Status:** Milestone 1A local journey implemented and browser verified, including provider adapter, configurable sources/teams, pre-auth help, SQLite checkpoints and review interrupts. Live model evaluation awaits credentials; AWS, Bedrock RAG, protected evidence and later milestones remain pending. See [implementation status](PHASE_1_STATUS.md).
 **Updated:** September 13, 2026.  
 **Scope:** Customer service with bounded RAG, claims intake, and human-reviewed claims triage using LangGraph on AWS.
 
