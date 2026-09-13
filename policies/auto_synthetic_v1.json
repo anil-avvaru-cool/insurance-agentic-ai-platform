@@ -1,0 +1,5 @@
+{
+  "rule_version": "auto_synthetic_v1",
+  "production_approved": false,
+  "urgent_triggers": {"injury_reported": "yes", "drivable": "no"}
+}

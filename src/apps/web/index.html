@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claims intake · Local demonstration</title>
+<style>
+body {font: 16px system-ui; color: #183345; background: #f3f6f8; max-width: 960px; margin: 2rem auto; padding: 1rem}
+section {background: white; border: 1px solid #d5dfe5; border-radius: 12px; padding: 1.4rem; margin: 1rem 0}
+label {display: block; margin: .7rem 0} input, select, textarea, button {font: inherit; padding: .6rem; max-width: 100%; box-sizing: border-box}
+input, textarea {width: 100%} button {background: #164963; color: white; border: 0; border-radius: 5px; margin: .4rem .4rem .4rem 0; cursor: pointer}
+pre {white-space: pre-wrap; overflow-wrap: anywhere; background: #edf2f5; padding: 1rem} .fields {display: grid; grid-template-columns: repeat(auto-fit,minmax(240px,1fr)); gap: 0 1rem}
+small {color: #526570} #notice {min-height: 1.5rem}
+</style>
+<h1>Claims intake</h1>
+<p>Local synthetic demonstration. Use fixture references only. Receipts do not represent real claims.</p>
+<section>
+<h2>Session</h2>
+<label>Access token <input id="token" type="password" autocomplete="off"></label>
+<small>Use a local token from your configuration. It stays in this page’s memory.</small>
+<label>Conversation reference <input id="conversation"></label>
+<button id="create">Start conversation</button><button id="resume">Resume conversation</button>
+<p id="notice" role="status" aria-live="polite"></p>
+</section>
+<section>
+<h2>Report an auto loss</h2>
+<p>Complete the facts you know, then save. Blank fields remain missing. Select “unknown” when injury or drivability is uncertain.</p>
+<div class="fields" id="fields"></div>
+<label><input id="accurate" type="checkbox" style="width:auto"> I confirm the entered facts reflect my report.</label>
+<button id="save">Save facts</button><button id="confirm">Confirm displayed draft and submit</button>
+<p>Review the saved draft below before confirming. Run the local worker to process queued requests, then refresh.</p>
+<button id="refresh">Refresh task and draft</button>
+<pre id="draft">No draft loaded.</pre>
+</section>
+<section>
+<h2>Service</h2>
+<label>Policy or claim reference <input id="object_ref"></label>
+<button data-intent="policy_status">Policy status</button><button data-intent="claim_status">Claim status</button>
+<button data-intent="service">How to report a loss</button><button data-intent="employee_help">Request employee help</button>
+<pre id="task">No task yet.</pre>
+</section>
+<section>
+<h2>Employee review</h2>
+<p>Enter your employee token above to load the local review queue. Accepted recommendations remain subject to claims-system assignment.</p>
+<button id="reviews">Load review queue</button><div id="queue"></div>
+</section>
+<script>
+const $ = id => document.getElementById(id);
+let draft = null, task = null;
+const fields = ['policy_ref','incident_at','description','location_ref','vehicle_ref','contact_ref','injury_reported','drivable'];
+for (const name of fields) {
+  const label = document.createElement('label'); label.textContent = name.replaceAll('_',' ');
+  const input = document.createElement(['injury_reported','drivable'].includes(name) ? 'select' : 'input');
+  input.id = name;
+  if (input.tagName === 'SELECT') for (const value of ['','yes','no','unknown']) {
+    const option = document.createElement('option'); option.value = value; option.textContent = value || 'Not reported'; input.append(option);
+  }
+  label.append(input); $('fields').append(label);
+}
+async function api(path, body) {
+  const response = await fetch(path, {method: body === undefined ? 'GET' : 'POST',
+    headers: {'Authorization': 'Bearer '+$('token').value, 'Content-Type':'application/json'},
+    ...(body === undefined ? {} : {body:JSON.stringify(body)})});
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || data.detail || 'Request failed');
+  return data;
+}
+function action(id, fn) { $(id).onclick = async () => {
+  try { $('notice').textContent = ''; await fn(); } catch (error) { $('notice').textContent = error.message; }
+}; }
+function showDraft(data) {
+  draft = data; $('draft').textContent = JSON.stringify(data,null,2);
+  for (const name of fields) $(name).value = data.facts[name]?.value || '';
+  $('accurate').checked = false;
+}
+function path(suffix='') {
+  if (!$('conversation').value) throw new Error('Start or resume a conversation first.');
+  return '/v1/conversations/'+encodeURIComponent($('conversation').value)+suffix;
+}
+async function send(message) {
+  if (!draft) throw new Error('Load the current draft first.');
+  const data = await api(path('/messages'), {message_id: crypto.randomUUID().replaceAll('-','_'), expected_version:draft.draft_version, ...message});
+  task = data.task_ref; $('task').textContent = JSON.stringify(data,null,2); $('notice').textContent = 'Queued. Run the local worker, then refresh.';
+}
+action('create', async () => { const data = await api('/v1/conversations',{}); $('conversation').value = data.conversation_ref; showDraft(data); });
+action('resume', async () => showDraft(await api(path())));
+action('save', async () => {
+  if (!$('accurate').checked) throw new Error('Confirm the entered facts before saving.');
+  const facts = {}; for (const name of fields) if ($(name).value.trim()) facts[name] = {value:$(name).value.trim(),confirmed:true};
+  await send({intent:'intake',facts});
+});
+action('confirm', async () => {
+  if (!draft || draft.missing_fields.length) throw new Error('Save all required facts and refresh the draft first.');
+  for (const name of fields) if ($(name).value.trim() !== (draft.facts[name]?.value || '')) throw new Error('Save your edits and refresh before confirming.');
+  const data = await api(path('/intake-confirmations'),{draft_version:draft.draft_version,payload_hash:draft.payload_hash});
+  task=data.task_ref; $('task').textContent=JSON.stringify(data,null,2); $('notice').textContent='Submission queued. Run the worker, then refresh.';
+});
+action('refresh', async () => {
+  if (task) $('task').textContent=JSON.stringify(await api('/v1/tasks/'+task),null,2);
+  showDraft(await api(path()));
+});
+for (const button of document.querySelectorAll('[data-intent]')) button.onclick = async () => {
+  try { await send({intent:button.dataset.intent, object_ref:$('object_ref').value || null, question:button.dataset.intent==='service'?'report_loss':null}); }
+  catch(error) { $('notice').textContent=error.message; }
+};
+action('reviews', async () => {
+  const data = await api('/v1/reviews'); $('queue').replaceChildren();
+  if (!data.items.length) $('queue').textContent='No pending reviews.';
+  for (const review of data.items) {
+    const card=document.createElement('section'), pre=document.createElement('pre');
+    pre.textContent=JSON.stringify(review,null,2); card.append(pre);
+    const note=document.createElement('textarea'); note.placeholder='Decision reason'; note.setAttribute('aria-label','Decision reason'); card.append(note);
+    const team=document.createElement('select'); team.setAttribute('aria-label','Amended team');
+    for (const name of ['auto_standard','auto_priority']) { const option=document.createElement('option'); option.value=name; option.textContent=name; team.append(option); } card.append(team);
+    for (const decision of ['accept','amend','reject','request_information']) {
+      const button=document.createElement('button'); button.textContent=decision.replaceAll('_',' '); card.append(button);
+      button.onclick=async () => {try {
+        const result=await api('/v1/reviews/'+review.id+'/decision',{decision_id:crypto.randomUUID().replaceAll('-','_'),expected_version:review.version,decision,note:note.value,...(decision==='amend'?{recommended_team:team.value}:{})});
+        pre.textContent=JSON.stringify(result,null,2); for (const b of card.querySelectorAll('button')) b.disabled=true;
+      } catch(error) { $('notice').textContent=error.message; }};
+    } $('queue').append(card);
+  }
+});
+</script>
+</html>

@@ -1,0 +1,9 @@
+{
+  "policies": {
+    "synthetic_policy": {"owner": "customer_one", "status": "active", "source_version": "synthetic_v1"},
+    "other_policy": {"owner": "customer_two", "status": "active", "source_version": "synthetic_v1"}
+  },
+  "vehicles": {"synthetic_vehicle": {"owner": "customer_one", "policy_ref": "synthetic_policy"}},
+  "locations": {"synthetic_location": {"owner": "customer_one"}},
+  "contacts": {"synthetic_contact": {"owner": "customer_one"}}
+}
