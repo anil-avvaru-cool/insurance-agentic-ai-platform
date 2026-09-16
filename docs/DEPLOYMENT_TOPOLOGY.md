@@ -1,7 +1,7 @@
 # Insurance Agentic AI Platform — Deployment Topology
 
 **Status:** Proposed deployment design; no infrastructure deployed.  
-**Updated:** September 12, 2026.  
+**Updated:** September 16, 2026.
 **Repository:** `insurance-agentic-ai-platform`
 
 This document owns physical deployment boundaries, cloud service selection, Terraform structure, release management, and recovery. See [Architecture](ARCHITECTURE.md) for agent behavior and trust boundaries and [Strategy](STRATEGY.md) for business priorities and scale assumptions.
@@ -45,21 +45,197 @@ Route a conversation to its owning deployment and state partition. If a regional
 
 ## Runtime and network placement
 
+The diagram below is the broader multi-runtime target. The first AWS release uses one
+LangGraph coordinator runtime for service, intake, and triage; it does not deploy a
+specialist runtime for each role. The coordinator runtime exposes an authenticated
+invocation API to trusted workers. It is not another public gateway, and the browser
+does not call it directly.
+
 ```mermaid
 flowchart TD
-    Channel[Customer channel] --> Edge[Public edge: gateway / WAF / authentication]
-    Edge --> API[FastAPI application service]
-    API --> Coordinator[Coordinator runtime]
-    Coordinator --> Agents[Separate specialist runtimes]
-    Coordinator --> Queue[Durable task queues]
-    Coordinator --> DB[Private checkpoint database]
-    Agents --> MCP[Role-scoped MCP services]
-    MCP --> Backend[Private or authenticated enterprise API connections]
-    Agents --> Model[Approved regional model endpoints]
+    Browser[React or other customer client] --> WAF[WAF at supported public entry point]
+    WAF --> Gateway[HTTP API gateway: routes and authentication]
+    Gateway --> API[Private Frontend FastAPI service]
+    API --> State[(Task status and workflow state)]
+    API --> Outbox[Transactional outbox]
+    Outbox --> Queue[Durable task queue]
+    Queue --> Worker[Invocation worker]
+    Worker --> Coordinator[Private coordinator invocation API]
+    Coordinator <--> State
+    Coordinator --> Agents[Specialist runtimes in later target]
+    Coordinator --> Tools[Authorized tools and action service]
+    Tools --> Backend[Enterprise insurance APIs]
+    Coordinator --> Model[Approved model endpoint]
     Coordinator --> Audit[Sanitized telemetry and restricted audit]
+    Browser -->|GET task and conversation status| Gateway
 ```
 
-Customer-facing access terminates at the controlled API boundary. Use private connectivity for internal services where supported; otherwise require authenticated endpoints and constrained egress. Public availability of a managed endpoint must not imply anonymous invocation. Confirm private network support for the chosen runtime mode and region before committing to the topology.
+The WAF evaluates incoming traffic at its supported attachment point. The HTTP API
+gateway then selects a route and enforces the configured authentication and limits;
+Frontend FastAPI enforces customer ownership and application permissions. WAF,
+gateway, and Frontend FastAPI have different jobs, even if a cloud provider
+packages some of them together.
+Customer-facing access terminates at the controlled API boundary. Use private
+connectivity for internal services where supported; otherwise require authenticated
+endpoints and constrained egress. Public availability of a managed endpoint must not
+imply anonymous invocation. Confirm private network support for the chosen runtime
+mode and region before committing to the topology.
+
+### Async request and response path
+
+The following sequence uses Azure Service Bus (ASB) as the queue. AWS SQS plays the
+same role in the proposed AWS deployment. The browser communicates only with the
+public HTTP API; it never connects to the queue or coordinator.
+
+```mermaid
+sequenceDiagram
+    title Async Task Submission and Status Retrieval
+    autonumber
+    participant C as React client
+    participant E as WAF + HTTP gateway
+    participant A as Frontend FastAPI
+    participant D as Application database
+    participant O as Outbox dispatcher
+    participant B as Azure Service Bus
+    participant W as Invocation worker
+    participant R as Coordinator API
+    C->>E: POST message with message_id
+    E->>A: Authenticated request
+    A->>D: Insert queued task and outbox row in one transaction
+    A->>D: Commit transaction
+    D-->>A: task_ref
+    A-->>C: 202 Accepted {task_ref}
+    Note over C,R: Original HTTP request has ended
+    O->>D: Read pending outbox row
+    O->>B: Send task event with stable MessageId
+    B-->>O: Accepted
+    O->>D: Mark outbox row sent
+    B->>W: Deliver task event
+    W->>R: Invoke graph for task_ref
+    R->>D: Save checkpoint, task status, and safe result
+    R-->>W: Invocation finished or paused
+    W->>B: Complete message after durable outcome
+    loop Until terminal or awaiting-review state
+        C->>E: GET /v1/tasks/{task_ref}
+        E->>A: Authenticated status request
+        A->>D: Read task owned by customer
+        D-->>A: Status and result
+        A-->>C: 200 status and result
+    end
+```
+
+1. The client sends `POST /v1/conversations/{id}/messages` with an idempotent message
+   ID. Frontend FastAPI authenticates the customer, records a task and outbox event
+   durably, then returns `202 Accepted` with a task reference. The HTTP request ends here;
+   it does not wait for model inference or employee review.
+2. The outbox dispatcher publishes the event to the queue. A worker consumes it and
+   invokes the coordinator API. The coordinator runs the graph, calls authorized
+   tools, and persists checkpoints, task status, and a customer-safe result. Retries
+   can happen, so the task and business writes need idempotency.
+3. The client obtains the result with authenticated `GET /v1/tasks/{task}` and
+   `GET /v1/conversations/{id}` requests. It shows queued, running, completed, failed, or
+   awaiting-review state. The current repository web client provides a manual
+   Refresh button for these reads; automatic polling is a straightforward client
+   improvement. A human review can last much longer than any HTTP request. The
+   outbox-to-cloud-queue dispatcher and remote invocation worker are proposed
+   deployment components; the current prototype processes its local outbox with a
+   local worker.
+
+The queue transports work between services; it cannot deliver a message into a
+browser by itself. WebSockets are an optional later notification channel: the client
+opens an authenticated connection to a WebSocket gateway, and a completion publisher
+sends a small task-status event to that connection. The client then reads the
+authoritative result through Frontend FastAPI. Store and authorize connection-to-user
+bindings, handle disconnects and missed events, and keep HTTP reads as the recovery
+path. A WebSocket connection is not a substitute for durable task state. The current
+repository does not implement this notification channel.
+
+#### Task Completion Notification and Recovery
+
+```mermaid
+sequenceDiagram
+    title Task Completion Notification and Recovery
+    autonumber
+    participant C as React client
+    participant N as Notification endpoint
+    participant D as Application database
+    participant R as Coordinator / worker
+    participant A as Frontend FastAPI
+    C->>N: Open authenticated SSE or WebSocket connection
+    N->>D: Store or validate user and connection binding
+    R->>D: Commit task completion and safe result
+    R->>N: Publish task_ref and new status
+    N-->>C: task_ref completed notification
+    C->>A: GET /v1/tasks/{task_ref}
+    A->>D: Verify ownership and read authoritative result
+    A-->>C: Task result
+    opt Disconnected or notification missed
+        C->>A: GET task status after reconnect
+        A-->>C: Current durable status and result
+    end
+```
+
+**Client update choice:** Use automatic HTTP polling while a task is active, with
+bounded backoff and an immediate read when the page regains focus. Stop frequent
+polling at a terminal state; use a slower cadence or a later visit for employee
+review. This is the simplest extension of the implemented API and handles long
+human waits without holding a request open. SSE is a reasonable later choice if
+the application needs one-way server notifications and the selected ingress path
+supports long-lived streaming connections. WebSockets are justified when the
+client also needs frequent real-time messages to the server, such as live
+collaboration; ordinary request submission already works over HTTP. Either push
+option needs reconnect handling and an HTTP status read to recover missed events.
+Validate connection lifetime, authentication, and scaling on the chosen gateway
+before selecting a push transport.
+
+The database transaction does not include Azure Service Bus. A dispatcher can
+crash after Service Bus accepts a message but before it marks the outbox row sent;
+it will send that row again. Use the task reference as a stable message ID and
+make worker processing idempotent. Service Bus duplicate detection can reduce
+repeat deliveries within its configured window, but does not replace idempotency.
+
+#### Outbox Retry and Idempotent Processing
+
+```mermaid
+sequenceDiagram
+    title Outbox Retry and Idempotent Processing
+    participant O as Outbox dispatcher
+    participant B as Azure Service Bus
+    participant D as Application database
+    participant W as Worker
+    O->>B: Send task_ref as MessageId
+    B-->>O: Accepted
+    Note over O: Process crashes before marking outbox sent
+    O->>D: After restart, read pending row
+    O->>B: Retry same MessageId
+    B-->>W: Deliver once or more across retries
+    W->>D: Check task state and idempotency key
+    W->>D: Apply any remaining work and persist result
+```
+
+See [Azure's web-queue-worker guidance](https://learn.microsoft.com/en-us/azure/architecture/guide/architecture-styles/web-queue-worker)
+and [Service Bus duplicate detection](https://learn.microsoft.com/en-us/azure/service-bus-messaging/duplicate-detection).
+
+### Gateway resource boundaries
+
+One HTTP API gateway resource can hold multiple routes and integrations for the same
+Frontend FastAPI service; each path in the flow does not require a new gateway
+instance. If WebSockets are added on AWS API Gateway, they use a separate WebSocket API resource
+from the HTTP API, with its own routes and connection lifecycle. These are two API
+configurations within the API Gateway service, not two gateways in series. On Azure,
+an Application Gateway with WAF can be the public ingress before API Management;
+API Management routes to the application. Select and document one concrete ingress
+pattern per cloud before provisioning. Do not infer a physical WAF-to-gateway hop
+from a generic diagram: AWS WAF is attached to a supported edge resource.
+
+For the proposed AWS HTTP API pattern, WAF can protect a CloudFront distribution in
+front of API Gateway, or a supported application load balancer in another reviewed
+pattern. Direct WAF association with an API Gateway stage applies to REST APIs, not
+the proposed HTTP API. The HTTP API, its private integration, and any optional
+WebSocket API must be specified as distinct resources in Terraform.
+See [AWS HTTP API routes](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-develop-routes.html),
+[AWS WebSocket callbacks](https://docs.aws.amazon.com/apigateway/latest/developerguide/apigateway-how-to-call-websocket-api-connections.html),
+and [AWS WAF resource associations](https://docs.aws.amazon.com/waf/latest/developerguide/web-acl-associating-aws-resource.html).
 
 The coordinator owns workflow state. Each independently hosted agent has its own identity and task context. Agents do not all connect to the checkpoint database or receive a combined set of secrets. MCP authorization enforces both role permission and customer/object scope. An action executor uses separately controlled permissions for validated business writes.
 
