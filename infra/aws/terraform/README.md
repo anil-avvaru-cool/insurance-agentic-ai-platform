@@ -21,17 +21,21 @@ Use Terraform 1.10 or later (below 2.0). AWS provider 6.27.0 is pinned with comm
 checksums in each root. From the repository directory:
 
 ```sh
-terraform fmt -check -recursive infra/terraform
-terraform -chdir=infra/terraform/bootstrap init -backend=false
-terraform -chdir=infra/terraform/bootstrap validate
-terraform -chdir=infra/terraform/bootstrap test
-terraform -chdir=infra/terraform/development init -backend=false
-terraform -chdir=infra/terraform/development validate
-terraform -chdir=infra/terraform/development test
+terraform fmt -check -recursive infra/aws/terraform
+terraform -chdir=infra/aws/terraform/bootstrap init -backend=false
+terraform -chdir=infra/aws/terraform/bootstrap validate
+terraform -chdir=infra/aws/terraform/bootstrap test
+terraform -chdir=infra/aws/terraform/development init -backend=false
+terraform -chdir=infra/aws/terraform/development validate
+terraform -chdir=infra/aws/terraform/development test
 ```
 
 Tests use a mocked AWS provider and plan only. They establish configuration
 invariants, not AWS availability, permissions, routing, failover or connectivity.
+To see the resources Terraform would create, change or destroy in your AWS
+account, configure real credentials, variables and state as described below,
+then run the corresponding `terraform plan` command. `terraform test` does not
+show that account-specific plan.
 
 ## Bootstrap and plan
 
@@ -39,16 +43,22 @@ Before deployment, record the account, region, owner, deployment identity and
 state bucket owner. Use a dedicated development AWS identity. Both providers
 restrict the target account; also configure the backend account restriction.
 Copy each `terraform.tfvars.example` to `terraform.tfvars` in its own directory
-and replace every placeholder. Select an available PostgreSQL engine version and
+and replace the account and backend placeholders. Select an available PostgreSQL engine version and
 matching parameter family in the chosen region. Examples are not deployable.
 
 The bootstrap root initially uses local state. Keep that state protected until
-migration. After reviewing its plan, an authorized operator can apply it:
+migration. Preview the real resource changes before applying:
 
 ```sh
-terraform -chdir=infra/terraform/bootstrap init
-terraform -chdir=infra/terraform/bootstrap plan -out=bootstrap.tfplan
-terraform -chdir=infra/terraform/bootstrap apply bootstrap.tfplan
+terraform -chdir=infra/aws/terraform/bootstrap init
+terraform -chdir=infra/aws/terraform/bootstrap plan -out=bootstrap.tfplan
+terraform -chdir=infra/aws/terraform/bootstrap show bootstrap.tfplan
+```
+
+After reviewing the plan, an authorized operator can apply it:
+
+```sh
+terraform -chdir=infra/aws/terraform/bootstrap apply bootstrap.tfplan
 ```
 
 Move bootstrap state into the created bucket: add an ignored `remote_override.tf`
@@ -65,7 +75,7 @@ Also create an ignored `bootstrap.s3.tfbackend` with bucket, region, allowed_acc
 `use_lockfile = true`. Run:
 
 ```sh
-terraform -chdir=infra/terraform/bootstrap init -migrate-state -backend-config=bootstrap.s3.tfbackend
+terraform -chdir=infra/aws/terraform/bootstrap init -migrate-state -backend-config=bootstrap.s3.tfbackend
 ```
 
 Keep the override and backend config available to each bootstrap operator;
@@ -77,8 +87,9 @@ Copy `development/development.s3.tfbackend.example` to
 `development/development.s3.tfbackend`, fill it in, then:
 
 ```sh
-terraform -chdir=infra/terraform/development init -reconfigure -backend-config=development.s3.tfbackend
-terraform -chdir=infra/terraform/development plan -out=development.tfplan
+terraform -chdir=infra/aws/terraform/development init -reconfigure -backend-config=development.s3.tfbackend
+terraform -chdir=infra/aws/terraform/development plan -out=development.tfplan
+terraform -chdir=infra/aws/terraform/development show development.tfplan
 ```
 
 Review the concrete plan before an authorized apply. State identities need
@@ -90,11 +101,13 @@ uses [native S3 locking](https://developer.hashicorp.com/terraform/language/back
 
 ## Network and runtime handoff
 
-Supply existing private subnets in two AZs of the same VPC. Terraform rejects
-wrong-VPC, single-AZ and public-IP-assignment inputs. Review route tables and
-VPC DNS separately: disabling public IP assignment alone does not prove a subnet
-is private. No VPC, NAT gateway or endpoints are created. Record the approved
-outbound HTTPS path for later workloads and private access to AWS services.
+The development root creates a VPC (`10.42.0.0/16`) with DNS enabled and two
+private `/24` subnets in separate available AZs. Both subnets use an explicit
+route table containing only the local VPC route; no public IP assignment,
+internet gateway, NAT gateway, or VPC endpoints are configured. Outputs expose
+the resulting VPC and subnet IDs. Before deploying workloads in these subnets,
+add an approved outbound HTTPS path and private access to required AWS services.
+The current AgentCore smoke runtime uses public network mode, not these subnets.
 
 Attach the output checkpoint client security group only to authorized database
 clients and migration tasks. It permits TCP 5432 to the database group only;
@@ -127,6 +140,23 @@ before an authorized apply. RDS retains a final snapshot; account for snapshots,
 automated backups and retained secrets when reviewing residual costs. Queue
 deletion loses messages, so export or reconcile pending work first.
 
-Keep bootstrap/state storage for recovery and audit. `prevent_destroy` and
-`force_destroy = false` deliberately block routine state bucket destruction.
-State retirement requires a separate reviewed archive and retention decision.
+For a POC, the state bucket can be removed after development is destroyed. The
+bootstrap bucket uses `force_destroy = true`, so destroying it deletes all object
+versions, including old state files. Download any state history you need before
+teardown, and confirm no other Terraform root uses the bucket.
+
+If bootstrap state was migrated into this bucket, move it back to local state
+before destroying the bucket. Remove the ignored `bootstrap/remote_override.tf`
+file, then run `terraform -chdir=infra/aws/terraform/bootstrap init -migrate-state`
+and accept the state migration prompt. Confirm the local bootstrap state contains
+the bucket before continuing. Keep that local state file until the destroy is
+complete. Then review and apply a bootstrap destroy plan:
+
+```sh
+terraform -chdir=infra/aws/terraform/bootstrap plan -destroy -out=bootstrap_destroy.tfplan
+terraform -chdir=infra/aws/terraform/bootstrap apply bootstrap_destroy.tfplan
+```
+
+Do not start bootstrap from empty local state: Terraform would lose track of the
+bucket. A failed development destroy may leave resources behind, so check its
+result before deleting the state bucket.

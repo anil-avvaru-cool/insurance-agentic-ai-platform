@@ -1,11 +1,3 @@
-variable "vpc_id" { type = string }
-variable "private_subnet_ids" {
-  type = set(string)
-  validation {
-    condition     = length(var.private_subnet_ids) >= 2
-    error_message = "Supply private subnets in at least two availability zones."
-  }
-}
 variable "postgres_engine_version" { type = string }
 variable "postgres_parameter_family" { type = string }
 variable "db_instance_class" { type = string }
@@ -24,19 +16,15 @@ variable "final_snapshot_identifier" {
     error_message = "Supply a unique lowercase alphanumeric final snapshot identifier."
   }
 }
-data "aws_subnet" "private" {
-  for_each = var.private_subnet_ids
-  id       = each.value
-}
 resource "aws_security_group" "checkpoint_client" {
   name        = "${local.name}_checkpoint_client"
   description = "Attach only to authorized checkpoint clients; database egress only"
-  vpc_id      = var.vpc_id
+  vpc_id      = aws_vpc.development.id
 }
 resource "aws_security_group" "checkpoint" {
   name        = "${local.name}_checkpoint"
   description = "Private PostgreSQL checkpoint database"
-  vpc_id      = var.vpc_id
+  vpc_id      = aws_vpc.development.id
 }
 resource "aws_vpc_security_group_ingress_rule" "postgres" {
   security_group_id            = aws_security_group.checkpoint.id
@@ -54,13 +42,7 @@ resource "aws_vpc_security_group_egress_rule" "postgres" {
 }
 resource "aws_db_subnet_group" "checkpoint" {
   name       = "${local.name}_checkpoint"
-  subnet_ids = var.private_subnet_ids
-  lifecycle {
-    precondition {
-      condition     = alltrue([for subnet in data.aws_subnet.private : subnet.vpc_id == var.vpc_id && !subnet.map_public_ip_on_launch]) && length(toset([for subnet in data.aws_subnet.private : subnet.availability_zone])) >= 2
-      error_message = "Subnets must belong to the selected VPC, span two AZs and disable public IP assignment. Review route tables separately."
-    }
-  }
+  subnet_ids = aws_subnet.private[*].id
 }
 resource "aws_db_parameter_group" "checkpoint" {
   name   = "${local.aws_name}checkpoint"

@@ -230,4 +230,4 @@ local_*.sqlite3*
 *.tfplan
 crash.log
 crash.*.log
-infra/terraform/bootstrap/remote_override.tf
+infra/aws/terraform/bootstrap/remote_override.tf

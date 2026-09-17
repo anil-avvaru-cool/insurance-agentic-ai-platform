@@ -11,8 +11,6 @@ variables {
   project_name              = "insurance"
   environment               = "development"
   owner                     = "test"
-  vpc_id                    = "vpc_test"
-  private_subnet_ids        = ["subnet_one", "subnet_two"]
   postgres_engine_version   = "16.6"
   postgres_parameter_family = "postgres16"
   db_instance_class         = "db.t4g.micro"
@@ -21,15 +19,15 @@ variables {
   final_snapshot_identifier = "insurancetestfinal"
 }
 override_data {
-  target = data.aws_subnet.private["subnet_one"]
-  values = { vpc_id = "vpc_test", availability_zone = "us-east-1a", map_public_ip_on_launch = false }
-}
-override_data {
-  target = data.aws_subnet.private["subnet_two"]
-  values = { vpc_id = "vpc_test", availability_zone = "us-east-1b", map_public_ip_on_launch = false }
+  target = data.aws_availability_zones.available
+  values = { names = ["us-east-1a", "us-east-1b"] }
 }
 run "private_foundation" {
   command = plan
+  assert {
+    condition     = aws_vpc.development.enable_dns_support && aws_vpc.development.enable_dns_hostnames && length(aws_subnet.private) == 2 && aws_subnet.private[0].availability_zone != aws_subnet.private[1].availability_zone && alltrue([for subnet in aws_subnet.private : !subnet.map_public_ip_on_launch]) && length(aws_route_table_association.private) == 2
+    error_message = "Create two private subnets in separate AZs with no internet route."
+  }
   assert {
     condition     = !aws_db_instance.checkpoint.publicly_accessible && aws_db_instance.checkpoint.storage_encrypted && aws_db_instance.checkpoint.manage_master_user_password && aws_db_instance.checkpoint.deletion_protection && !aws_db_instance.checkpoint.skip_final_snapshot
     error_message = "Checkpoint storage must be private, encrypted, password managed and recoverable."
@@ -42,27 +40,6 @@ run "private_foundation" {
     condition     = length(aws_iam_role.service) == 3 && aws_iam_role.service["api"].name != aws_iam_role.service["worker"].name
     error_message = "API, worker and action identities must be separate."
   }
-}
-run "reject_wrong_vpc" {
-  command = plan
-  variables { vpc_id = "vpc_wrong" }
-  expect_failures = [aws_db_subnet_group.checkpoint]
-}
-run "reject_single_az" {
-  command = plan
-  override_data {
-    target = data.aws_subnet.private["subnet_two"]
-    values = { vpc_id = "vpc_test", availability_zone = "us-east-1a", map_public_ip_on_launch = false }
-  }
-  expect_failures = [aws_db_subnet_group.checkpoint]
-}
-run "reject_public_ip_subnet" {
-  command = plan
-  override_data {
-    target = data.aws_subnet.private["subnet_two"]
-    values = { vpc_id = "vpc_test", availability_zone = "us-east-1b", map_public_ip_on_launch = true }
-  }
-  expect_failures = [aws_db_subnet_group.checkpoint]
 }
 run "bedrock_foundation" {
   command = plan

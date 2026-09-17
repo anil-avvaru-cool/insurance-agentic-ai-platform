@@ -1,11 +1,9 @@
-# Replace account/network placeholders before planning. Verify RDS version in your region.
+# Replace the account placeholder before planning. Verify RDS version in your region.
 aws_region = "us-east-1"
 aws_account_id = "000000000000"
 project_name = "insurance"
 environment = "development"
 owner = "insurance_platform_team"
-vpc_id = "REPLACE_WITH_VPC_ID"
-private_subnet_ids = ["REPLACE_WITH_PRIVATE_SUBNET_A", "REPLACE_WITH_PRIVATE_SUBNET_B"]
 postgres_engine_version = "16.6"
 postgres_parameter_family = "postgres16"
 db_instance_class = "db.t4g.micro"

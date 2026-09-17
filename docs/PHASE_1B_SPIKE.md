@@ -44,7 +44,7 @@ kill, network interruption and RDS failover need a deployed test.
 
 1. Record the AWS account, primary region, deployment identity, private subnet
    and security group references, outbound HTTPS route, and state bucket owner.
-2. Configure and review the [Terraform foundation](../infra/terraform/README.md):
+2. Configure and review the [Terraform foundation](../infra/aws/terraform/README.md):
    bootstrap/development roots, encrypted state with locking, private database,
    SQS/DLQ and service identities are implemented. Account-backed plan/apply and
    network verification remain pending.

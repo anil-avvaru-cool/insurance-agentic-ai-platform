@@ -1,3 +1,5 @@
+output "vpc_id" { value = aws_vpc.development.id }
+output "private_subnet_ids" { value = aws_subnet.private[*].id }
 output "checkpoint_endpoint" { value = aws_db_instance.checkpoint.endpoint }
 output "checkpoint_database" { value = aws_db_instance.checkpoint.db_name }
 output "checkpoint_admin_secret_arn" {

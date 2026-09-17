@@ -8,12 +8,12 @@ image build/push, ingestion or model invocation was executed during implementati
 
 Local ignored files have been created alongside their tracked examples:
 
-- `infra/terraform/bootstrap/terraform.tfvars`
-- `infra/terraform/development/terraform.tfvars`
-- `infra/terraform/development/development.s3.tfbackend`
+- `infra/aws/terraform/bootstrap/terraform.tfvars`
+- `infra/aws/terraform/development/terraform.tfvars`
+- `infra/aws/terraform/development/development.s3.tfbackend`
 
-Replace `000000000000`, the VPC/subnet placeholders and the state bucket name
-consistently. Confirm the owner, existing private network, PostgreSQL engine version
+Replace `000000000000` and the state bucket name
+consistently. Confirm the owner, generated private network CIDR, PostgreSQL engine version
 and final snapshot name. Examples use `us-east-1`, `db.t4g.micro`, 20 GiB, single AZ,
 seven-day RDS backups and deletion protection. `16.6`/`postgres16` is a matching
 example pair, not a guarantee that AWS still permits new instances on that minor
@@ -58,14 +58,14 @@ and [AgentCore runtime IAM](https://docs.aws.amazon.com/bedrock-agentcore/latest
 
 ## First deployment: storage, knowledge base and ECR
 
-Follow the [Terraform bootstrap/state runbook](../infra/terraform/README.md) first.
+Follow the [Terraform bootstrap/state runbook](../infra/aws/terraform/README.md) first.
 Keep `enable_agentcore_runtime = false` and `agentcore_image_digest = ""`.
 After reviewing the development plan, apply it and inspect the resource IDs:
 
 ```sh
-terraform -chdir=infra/terraform/development plan -out=development.tfplan
-terraform -chdir=infra/terraform/development apply development.tfplan
-terraform -chdir=infra/terraform/development output -json bedrock
+terraform -chdir=infra/aws/terraform/development plan -out=development.tfplan
+terraform -chdir=infra/aws/terraform/development apply development.tfplan
+terraform -chdir=infra/aws/terraform/development output -json bedrock
 ```
 
 This creates an empty knowledge base. Terraform does not upload documents or run
@@ -81,10 +81,10 @@ metadata; no `.env`, SQLite databases or application tokens are copied.
 
 ```sh
 export AWS_REGION=us-east-1
-export AGENTCORE_REPOSITORY_URL="$(terraform -chdir=infra/terraform/development output -json bedrock | jq -r .ecr_repository_url)"
+export AGENTCORE_REPOSITORY_URL="$(terraform -chdir=infra/aws/terraform/development output -json bedrock | jq -r .ecr_repository_url)"
 export AGENTCORE_IMAGE_TAG=development_20260913_01
 aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "${AGENTCORE_REPOSITORY_URL%%/*}"
-docker buildx build --platform linux/arm64 --provenance=false -f infra/containers/agentcore.Dockerfile -t "$AGENTCORE_REPOSITORY_URL:$AGENTCORE_IMAGE_TAG" --push .
+docker buildx build --platform linux/arm64 --provenance=false -f infra/aws/containers/agentcore.Dockerfile -t "$AGENTCORE_REPOSITORY_URL:$AGENTCORE_IMAGE_TAG" --push .
 aws ecr describe-images --region "$AWS_REGION" --repository-name "${AGENTCORE_REPOSITORY_URL#*/}" --image-ids imageTag="$AGENTCORE_IMAGE_TAG" --query 'imageDetails[0].imageDigest' --output text
 ```
 
@@ -116,7 +116,7 @@ For a synthetic ingestion test, upload the two fixture objects with an operator
 identity that can write to the document bucket:
 
 ```sh
-export KNOWLEDGE_BUCKET="$(terraform -chdir=infra/terraform/development output -json bedrock | jq -r .knowledge_bucket)"
+export KNOWLEDGE_BUCKET="$(terraform -chdir=infra/aws/terraform/development output -json bedrock | jq -r .knowledge_bucket)"
 aws s3 cp tests/fixtures/knowledge/synthetic_service.txt "s3://$KNOWLEDGE_BUCKET/approved/synthetic_service.txt"
 aws s3 cp tests/fixtures/knowledge/synthetic_service.txt.metadata.json "s3://$KNOWLEDGE_BUCKET/approved/synthetic_service.txt.metadata.json"
 PYTHONPATH=src uv run --locked --env-file .env python scripts/bedrock_smoke.py ingest
@@ -147,9 +147,9 @@ live IAM permissions, model quality, service quotas, network connectivity or ima
 startup. Run tests from the repo root:
 
 ```sh
-terraform fmt -check -recursive infra/terraform
-terraform -chdir=infra/terraform/development validate
-terraform -chdir=infra/terraform/development test
+terraform fmt -check -recursive infra/aws/terraform
+terraform -chdir=infra/aws/terraform/development validate
+terraform -chdir=infra/aws/terraform/development test
 PYTHONPATH=src:. uv run --locked python -m unittest discover -s tests/unit -v
 ```
 

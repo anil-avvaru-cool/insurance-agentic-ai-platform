@@ -8,7 +8,7 @@ systems are not connected. The broader Phase 1 rollout remains pending; see the
 
 Phase 1B has started with selectable PostgreSQL planning/review checkpoints and
 a recovery evaluation runner. See the [spike runbook](docs/PHASE_1B_SPIKE.md)
-for migration and verification commands. The [Terraform foundation](infra/terraform/README.md)
+for migration and verification commands. The [Terraform foundation](infra/aws/terraform/README.md)
 adds separate bootstrap/development roots for state, RDS, SQS and service identities;
 AWS deployment remains pending. Existing `.env` files now require
 `CHECKPOINT_BACKEND=sqlite` to keep the local setup.

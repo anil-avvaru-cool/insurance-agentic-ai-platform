@@ -1,4 +1,4 @@
-# Replace account/network placeholders before planning. Verify RDS version in your region.
+# Replace the account placeholder before planning.
 aws_region = "us-east-1"
 aws_account_id = "000000000000"
 project_name = "insurance"

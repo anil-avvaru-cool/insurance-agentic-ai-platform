@@ -31,7 +31,7 @@ silently written to the core.
 
 ### Phase 1B Terraform foundation
 
-Added separate [bootstrap and development Terraform roots](../infra/terraform/README.md)
+Added separate [bootstrap and development Terraform roots](../infra/aws/terraform/README.md)
 with a pinned AWS provider and lock files. Bootstrap provisions private, encrypted,
 versioned S3 state storage; development uses encrypted remote state with native
 S3 locking and provisions private TLS-required PostgreSQL RDS, encrypted SQS/DLQ,
