@@ -62,7 +62,7 @@ Injury reports, undrivable vehicles, and uninhabitable homes are examples for cl
 
 ### Phase-one RAG
 
-Use Amazon Bedrock Knowledge Bases with an S3 Vectors index for a small, curated set of approved FAQs, claims procedures, and intake checklists. Begin with auto content. The development Terraform definitions for the source bucket, vector bucket and index, knowledge base, and data source have passed mocked plan tests, but no AWS apply, ingestion, or live retrieval has run. AWS supports using S3 Vectors as the Knowledge Bases vector store. See the [RAG deployment topology](RAG_Deployment_topology.md) for the proposed operational paths. [AWS integration documentation](https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-vectors-getting-started.html)
+Use Amazon Bedrock Knowledge Bases with an S3 Vectors index for a small, curated set of approved FAQs, claims procedures, and intake checklists. Begin with auto content. The development Terraform definitions for the source bucket, vector bucket and index, knowledge base, and data source have passed mocked plan tests, but no AWS apply, ingestion, or live retrieval has run. AWS supports using S3 Vectors as the Knowledge Bases vector store. See the [AWS RAG deployment topology](AWS_RAG_Deployment_topology.md) for the proposed operational paths. [AWS integration documentation](https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-vectors-getting-started.html)
 
 | Data | Planned location |
 |---|---|

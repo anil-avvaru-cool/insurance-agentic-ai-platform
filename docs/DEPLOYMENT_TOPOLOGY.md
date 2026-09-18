@@ -270,7 +270,7 @@ PostgreSQL is proposed for checkpoint portability, subject to managed runtime co
 
 ### AWS
 
-Phase-one RAG is designed around a private general-purpose S3 bucket for approved source documents and a separate S3 Vectors bucket/index for embeddings through Bedrock Knowledge Bases. Keep customer evidence separate and leave workflow state in RDS. These resources are defined in development Terraform but have not been applied to AWS. See the [RAG deployment topology](RAG_Deployment_topology.md) for ingestion, retrieval, access, and recovery paths; the [RAG implementation scope](PHASE_1_IMPLEMENTATION_GUIDE.md#phase-one-rag) and [hourly AWS cost estimate](PHASE_1_AWS_COST_ESTIMATE.md) cover pilot behavior and sizing. [AWS S3 Vectors integration](https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-vectors-getting-started.html)
+Phase-one RAG is designed around a private general-purpose S3 bucket for approved source documents and a separate S3 Vectors bucket/index for embeddings through Bedrock Knowledge Bases. Keep customer evidence separate and leave workflow state in RDS. These resources are defined in development Terraform but have not been applied to AWS. See the [AWS RAG deployment topology](AWS_RAG_Deployment_topology.md) for ingestion, retrieval, access, and recovery paths; the [RAG implementation scope](PHASE_1_IMPLEMENTATION_GUIDE.md#phase-one-rag) and [hourly AWS cost estimate](PHASE_1_AWS_COST_ESTIMATE.md) cover pilot behavior and sizing. [AWS S3 Vectors integration](https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-vectors-getting-started.html)
 
 AgentCore documents support for LangGraph and framework-independent hosting, with MCP and A2A protocol options. Use runtime-specific IAM roles and adapters; the POC initially calls the external OpenAI API for GPT-5.4 mini, with outbound connectivity and provider configuration governed by [ADR 0001](adr/0001_model_selection_and_provider_abstraction.md). [AWS runtime documentation](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agents-tools-runtime.html)
 
@@ -279,6 +279,8 @@ The AWS Terraform provider exposes `aws_bedrockagentcore_agent_runtime`. Pin and
 ### Azure
 
 Use Foundry hosted agents for the custom LangGraph implementation. Foundry distinguishes hosted code from declarative prompt agents and provides managed endpoints and identity integration. Its overview currently labels A2A support as preview; this design does not depend on it. [Foundry Agent Service](https://learn.microsoft.com/en-us/azure/foundry/agents/overview)
+
+The [Azure RAG deployment topology](Azure_RAG_Deployment_topology.md) proposes a separate approved-source and retrieval path. It is a design proposal, not an Azure deployment commitment.
 
 Microsoft documents `azd ai agent init --infra=terraform` to generate Terraform infrastructure and supports code/container deployment modes. Review generated resources, pin applicable AzureRM/AzAPI versions, and explicitly separate infrastructure provisioning from agent application publication. Do not assume every agent lifecycle operation is available in AzureRM alone. [Foundry deployment reference](https://learn.microsoft.com/en-us/azure/foundry/agents/concepts/azure-yaml-reference)
 

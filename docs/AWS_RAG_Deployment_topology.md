@@ -1,9 +1,9 @@
-# RAG deployment topology
+# AWS RAG deployment topology
 
 **Status:** Proposed phase-one AWS design. Development Terraform resources are defined and mock validated; no account-backed apply, ingestion, or live retrieval has run.
 **Updated:** September 17, 2026.
 
-This document covers deployment and operation of the bounded customer-service knowledge corpus. The [platform deployment topology](DEPLOYMENT_TOPOLOGY.md) owns shared runtime, network, release, and recovery boundaries. The [Phase 1 guide](PHASE_1_IMPLEMENTATION_GUIDE.md#phase-one-rag) owns answer behavior and evaluation criteria. This document specifies how approved material reaches retrieval and how the service consumes it. Azure and GCP RAG implementations have not been selected.
+This document covers AWS deployment and operation of the bounded customer-service knowledge corpus. The [platform deployment topology](DEPLOYMENT_TOPOLOGY.md) owns shared runtime, network, release, and recovery boundaries. The [Phase 1 guide](PHASE_1_IMPLEMENTATION_GUIDE.md#phase-one-rag) owns answer behavior and evaluation criteria. This document specifies how approved material reaches retrieval and how the service consumes it. The [Azure RAG topology](Azure_RAG_Deployment_topology.md) is a separate proposal; Azure and GCP RAG implementations have not been selected for deployment.
 
 ## Placement and ownership
 
