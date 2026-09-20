@@ -1,0 +1,11 @@
+{
+  "metadataAttributes": {
+    "document_id": "property_user_1_v1",
+    "owner_id": "customer_one",
+    "policy_id": "POC_PROPERTY_001",
+    "lob": "property",
+    "version": "1",
+    "product_name": "Standard Property",
+    "effective_date": "2026-01-01"
+  }
+}

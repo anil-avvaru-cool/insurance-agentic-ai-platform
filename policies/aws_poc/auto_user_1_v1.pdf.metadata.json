@@ -1,0 +1,11 @@
+{
+  "metadataAttributes": {
+    "document_id": "auto_user_1_v1",
+    "owner_id": "customer_one",
+    "policy_id": "POC_AUTO_001",
+    "lob": "auto",
+    "version": "1",
+    "product_name": "Standard Auto",
+    "effective_date": "2026-01-01"
+  }
+}

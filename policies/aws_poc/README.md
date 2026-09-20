@@ -1,10 +1,10 @@
 # Synthetic AWS policy coverage corpus
 
-Implements step 1 of [the AWS POC plan](../../docs/PHASE_1_AWS_POC_PLAN.md).
+Implements steps 1 and 2 of [the AWS POC plan](../../docs/PHASE_1_AWS_POC_PLAN.md).
 All identities and policy terms are fictional test data. Each PDF is one page,
 uses a declarations layout with a coverage schedule and policy provisions,
 contains selectable text, and includes consistently labeled metadata in a compact
-document reference block for the later deterministic extraction step. A discreet
+document reference block for deterministic metadata extraction. A discreet
 footer identifies each PDF as a sample document. Dates use ISO format; LOB values are
 `auto` and `property`. The owner IDs match the existing local synthetic identities.
 
@@ -62,5 +62,65 @@ are test inputs, not trusted authorization in a deployed API. Other-owner
 cases must disclose no other owner's information. These fixtures specify
 expected behavior; they do not establish that retrieval isolation works.
 
-Metadata extraction, ingestion sidecars, AWS indexing, and running answer
-quality evaluations belong to the later plan steps.
+## Metadata extraction and validation
+
+Run from the repository root after generating or changing PDFs:
+
+```sh
+PYTHONPATH=src uv run --locked python scripts/prepare_poc_metadata.py
+PYTHONPATH=src uv run --locked python scripts/prepare_poc_metadata.py --check
+PYTHONPATH=src:. uv run --locked python -m unittest discover -s tests/unit -p 'test_poc_metadata.py' -v
+```
+
+The first command parses the actual PDFs with `pypdf`, extracts exact labels in
+`DOCUMENT REFERENCE`, and validates the entire corpus before writing any
+sidecars. The second command performs the same validation and rejects missing
+or stale sidecars without writing. Errors identify the document and correction
+needed and exit nonzero. Existing sidecars must not be ingested after a failed
+validation; run `--check` immediately before any future upload.
+
+PDF parsing lives in `src/ingestion/pdf.py`; deterministic extraction and
+validation live in `src/ingestion/metadata.py` and consume only text. No LLM or
+AWS calls are involved. `documents.json` supplies the expected document values;
+an independent policy-to-owner/LOB/product allowlist validates assignments.
+Changing the POC policy inventory requires an explicit allowlist update.
+
+| Field | Type and validation |
+|---|---|
+| `document_id` | Nonempty identifier; unique, matches PDF filename and reviewed source |
+| `owner_id` | Stable owner identifier; must match the policy allowlist |
+| `policy_id` | Unique policy identifier; one of the four approved policies |
+| `product_name` | Nonempty string; Standard Auto or Standard Property for the policy |
+| `lob` | Exact lowercase `auto` or `property`, matching the policy |
+| `version` | Positive integer encoded as a string |
+| `effective_date` | Valid calendar date in exact `YYYY-MM-DD` format |
+
+All seven fields are required; duplicate or unknown labels fail validation.
+Each `*.pdf.metadata.json` contains these string values under
+`metadataAttributes`, following the
+[AWS S3 metadata sidecar format](https://docs.aws.amazon.com/bedrock/latest/userguide/s3-data-source-connector.html).
+Upload each sidecar alongside its matching PDF in the same S3 prefix in step 3.
+Do not upload this README, the review record, or the JSON source/question fixtures.
+The `owner_id` and `lob` attributes are prepared for mandatory combined retrieval
+filters; extraction itself does not implement retrieval authorization.
+
+### Metadata review record
+
+On 2026-09-19, the extracted document reference values from all four PDFs were
+compared against the following expected values and `documents.json`. All seven
+fields matched. This was a review of selectable PDF text, not a rendered-page
+visual review. All four have version `1` and effective date `2026-01-01`.
+
+| Document ID | Owner ID | Policy ID | Product name | LOB |
+|---|---|---|---|---|
+| auto_user_1_v1 | customer_one | POC_AUTO_001 | Standard Auto | auto |
+| property_user_1_v1 | customer_one | POC_PROPERTY_001 | Standard Property | property |
+| auto_user_2_v1 | customer_two | POC_AUTO_002 | Standard Auto | auto |
+| property_user_2_v1 | customer_two | POC_PROPERTY_002 | Standard Property | property |
+
+For each future revision, compare every extracted field printed by the command
+against the corresponding PDF's document reference block, correct mismatches,
+and update this review record before ingestion. Automated source comparison
+supplements that review.
+
+AWS ingestion, indexing, and answer quality evaluation remain later plan steps.
