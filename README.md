@@ -1,5 +1,10 @@
 # Insurance agentic AI platform
 
+Start with [Phase 1: start here](docs/PHASE_1_START_HERE.md) for the local demo, tests, AWS sequence and teardown checklist.
+
+[Understand the codebase](docs/codebase_guide.md) for component responsibilities,
+source entrypoints, request flow, and a suggested reading order.
+
 Phase 1 now includes a runnable **local synthetic auto journey**: authenticated
 HTTP contracts, sourced intake facts, customer confirmation, durable queued work,
 mock claims receipts, urgency handoffs, and employee review. AWS and real claims
@@ -80,7 +85,7 @@ The tests use temporary databases and synthetic identities. They do not need
   the single synthetic queue. Production identity, reviewer scope delegation,
   and workload/action-service isolation remain pending.
 - Inputs support structured facts and optional natural-language interpretation
-  through the OpenAI Responses adapter. Extracted facts stay unconfirmed until
+  through the AWS Bedrock Converse adapter. Extracted facts stay unconfirmed until
   customer review; errors and unsupported requests produce employee handoffs.
   `LLM_PROVIDER=disabled` keeps the demo offline. Live model quality evaluation
   requires a configured key and remains pending.
@@ -120,7 +125,8 @@ On Ubuntu 26.04 the pinned Playwright release needs
 `PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64` for its fallback browser.
 
 To evaluate the configured model against nine synthetic language cases, set
-`OPENAI_API_KEY` and the model settings from `example.env`, then run:
+`LLM_PROVIDER=bedrock`, `BEDROCK_MODEL_ID`, `AWS_REGION`, and the language
+limits from `example.env`, with AWS credentials from a profile or IAM role, then run:
 
 ```sh
 PYTHONPATH=src uv run --env-file .env --locked python tests/evaluation/run_language.py
@@ -130,4 +136,7 @@ This command makes paid provider calls, reports model/prompt/catalog versions,
 usage and latency, and exits nonzero if any case fails. Offline tests use mocked
 provider responses and verify contracts and workflow controls; they do not measure
 live language quality. The evaluation does not establish production readiness.
-The transport follows the official [Structured Outputs contract](https://developers.openai.com/api/docs/guides/structured-outputs).
+The adapter uses [Bedrock Converse tool output](https://docs.aws.amazon.com/nova/latest/userguide/tool-use-definition.html)
+as structured data, then validates the schema and evidence locally; it executes no model tools.
+Only cloud-managed inference is allowed. Direct model-vendor APIs are prohibited.
+AWS Bedrock is implemented; Azure and Google Cloud require separate approved adapters.

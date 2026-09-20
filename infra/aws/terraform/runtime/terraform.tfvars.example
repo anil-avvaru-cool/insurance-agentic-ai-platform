@@ -1,0 +1,3 @@
+# Publish the ARM64 image, then replace this with its immutable digest.
+agentcore_image_digest = "sha256:REPLACE_WITH_64_LOWERCASE_HEX_CHARACTERS"
+# infrastructure is loaded from generated infrastructure.auto.tfvars.json.

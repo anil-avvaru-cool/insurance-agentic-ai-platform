@@ -1,7 +1,10 @@
 # ADR 0001: Configurable model selection, starting with GPT-5.4 mini
 
 Date: 2026-09-13  
-Status: Accepted for the POC; integration is not yet implemented.
+Status: Superseded by [ADR 0002](0002_cloud_managed_model_access.md) on 2026-09-19.
+
+Historical decision only. Direct model-vendor APIs are now prohibited and the
+OpenAI adapter has been removed. The following records the original decision.
 
 ## Context
 

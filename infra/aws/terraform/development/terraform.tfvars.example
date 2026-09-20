@@ -11,9 +11,5 @@ db_allocated_storage_gib = 20
 db_deletion_protection = true
 final_snapshot_identifier = "insurancedevelopmentfinal20260913"
 
-# First apply provisions KB, source/vector buckets, ECR and runtime IAM.
-enable_bedrock = true
+# Infrastructure is mandatory; image configuration belongs in ../runtime.
 bedrock_model_id = "amazon.nova-lite-v1:0"
-# Publish the image, paste its digest, then enable and plan again.
-enable_agentcore_runtime = false
-agentcore_image_digest = ""

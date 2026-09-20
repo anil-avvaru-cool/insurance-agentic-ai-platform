@@ -20,16 +20,7 @@ def configured_application():
     checkpoints = configured_checkpoints()
     if checkpoints.backend == "sqlite" and Path(checkpoints.target).resolve() in (Path(db_path).resolve(), Path(core_path).resolve()):
         raise ValueError("Checkpoint database must be separate")
-    from adapters.models.language import DisabledLanguage
-    from adapters.models.openai import OpenAIAdapter
-    provider = os.environ["LLM_PROVIDER"]
-    if provider == "disabled":
-        language = DisabledLanguage()
-    elif provider == "openai":
-        language = OpenAIAdapter(os.environ["LLM_MODEL"], os.environ["OPENAI_API_KEY"],
-                                 float(os.environ["LLM_TIMEOUT_SECONDS"]), int(os.environ["LLM_MAX_OUTPUT_TOKENS"]))
-    else:
-        raise ValueError("Unsupported model provider")
+    language = configured_language()
     return Application(Store(db_path), SyntheticCore(os.environ["FIXTURES_PATH"], core_path),
                        language=language, checkpoints=checkpoints)
 
@@ -42,3 +33,17 @@ def configured_identities():
         if len(token) < 16 or not identity["subject"] or identity["role"] not in ("customer", "employee"):
             raise ValueError("Invalid local identity")
     return identities
+
+
+def configured_language():
+    """Only approved cloud inference or explicit offline mode is supported."""
+    from adapters.models.language import DisabledLanguage
+    from adapters.models.bedrock import BedrockAdapter
+    provider = os.environ["LLM_PROVIDER"]
+    if provider == "disabled":
+        return DisabledLanguage()
+    if provider == "bedrock":
+        return BedrockAdapter(os.environ["BEDROCK_MODEL_ID"], os.environ["AWS_REGION"],
+                              float(os.environ["LLM_TIMEOUT_SECONDS"]),
+                              int(os.environ["LLM_MAX_OUTPUT_TOKENS"]))
+    raise ValueError("Unsupported model provider: use bedrock or disabled; direct providers are prohibited")

@@ -1,6 +1,6 @@
 # Insurance Agentic AI Platform — Architecture
 
-Model selection for the POC is governed by [ADR 0001](adr/0001_model_selection_and_provider_abstraction.md): start with GPT-5.4 mini through an OpenAI adapter and revisit the model using quality, latency, and cost evidence. Integration remains planned.
+Model access is governed by [ADR 0002](adr/0002_cloud_managed_model_access.md): all inference must use a cloud-managed service. The application uses AWS Bedrock Converse; direct model-vendor APIs are prohibited. Model quality remains subject to live evaluation.
 
 **Status:** Proposed reference architecture; no infrastructure deployed.  
 **Scope:** Enterprise insurance across vehicle and property lines.  

@@ -14,7 +14,7 @@ This document covers AWS deployment and operation of the bounded customer-servic
 | Embeddings | Titan Text Embeddings V2, 1,024 dimensions | Knowledge Base service role |
 | Vector search | Separate S3 Vectors bucket and index | Knowledge Base service role; queried via `Retrieve` |
 | Retrieval caller | Service node in the coordinator runtime | Runtime identity scoped to the Knowledge Base |
-| Answer generation | Configured model adapter, initially OpenAI GPT-5.4 mini | Runtime outbound model call; retrieved passages are input context |
+| Answer generation | Configured AWS Bedrock Converse adapter | Runtime outbound model call; retrieved passages are input context |
 | Customer evidence | Separate protected evidence storage | Excluded from the shared knowledge data source |
 | Task and workflow state | Application database and LangGraph checkpoint store | Excluded from the knowledge corpus |
 

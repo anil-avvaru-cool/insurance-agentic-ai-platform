@@ -254,7 +254,7 @@ The table is a proposed service selection, not a claim that every service has id
 | Concern | AWS | Azure | GCP |
 |---|---|---|---|
 | Managed agent hosting | Amazon Bedrock AgentCore Runtime | Microsoft Foundry Agent Service hosted agents | Gemini Enterprise Agent Platform Agent Runtime |
-| Model access | Initially OpenAI API GPT-5.4 mini through a configurable adapter; Bedrock candidates can be evaluated later | Approved Foundry model deployments | Approved Gemini/model endpoints in Google Cloud |
+| Model access | AWS Bedrock Converse through a configurable adapter; direct model-vendor APIs prohibited | Approved Foundry model deployments | Approved Gemini/model endpoints in Google Cloud |
 | Public API boundary | API Gateway | API Management | API Gateway or approved load-balancer pattern |
 | FastAPI/MCP container hosting | ECS/Fargate; AgentCore for supported tool workloads | Azure Container Apps | Cloud Run |
 | Runtime identities | IAM roles; delegated identity where needed | Microsoft Entra workload/managed identities | IAM service accounts and workload identity |
@@ -272,7 +272,7 @@ PostgreSQL is proposed for checkpoint portability, subject to managed runtime co
 
 Phase-one RAG is designed around a private general-purpose S3 bucket for approved source documents and a separate S3 Vectors bucket/index for embeddings through Bedrock Knowledge Bases. Keep customer evidence separate and leave workflow state in RDS. These resources are defined in development Terraform but have not been applied to AWS. See the [AWS RAG deployment topology](AWS_RAG_Deployment_topology.md) for ingestion, retrieval, access, and recovery paths; the [RAG implementation scope](PHASE_1_IMPLEMENTATION_GUIDE.md#phase-one-rag) and [hourly AWS cost estimate](PHASE_1_AWS_COST_ESTIMATE.md) cover pilot behavior and sizing. [AWS S3 Vectors integration](https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-vectors-getting-started.html)
 
-AgentCore documents support for LangGraph and framework-independent hosting, with MCP and A2A protocol options. Use runtime-specific IAM roles and adapters; the POC initially calls the external OpenAI API for GPT-5.4 mini, with outbound connectivity and provider configuration governed by [ADR 0001](adr/0001_model_selection_and_provider_abstraction.md). [AWS runtime documentation](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agents-tools-runtime.html)
+AgentCore documents support for LangGraph and framework-independent hosting, with MCP and A2A protocol options. Use runtime-specific IAM roles and adapters; the POC calls AWS Bedrock Converse using AWS credentials, with cloud-managed inference required by [ADR 0002](adr/0002_cloud_managed_model_access.md). [AWS runtime documentation](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agents-tools-runtime.html)
 
 The AWS Terraform provider exposes `aws_bedrockagentcore_agent_runtime`. Pin and validate the provider version and required runtime fields before implementation. [AWS Terraform resource](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/bedrockagentcore_agent_runtime)
 
