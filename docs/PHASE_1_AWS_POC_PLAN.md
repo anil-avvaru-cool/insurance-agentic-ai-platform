@@ -2,12 +2,14 @@
 
 ## Objective
 
-Deploy a small AWS proof of concept that answers policy coverage questions from four synthetic PDF documents, cites its sources, filters by line of business (LOB), and reports when the documents do not support an answer.
+Deploy a small AWS proof of concept that answers policy coverage questions from four synthetic PDF documents, cites its sources, isolates content by authenticated policy owner and line of business (LOB), and reports when the documents do not support an answer.
 
 ## Scope
 
-- Auto LOB: two lightweight policy coverage PDFs.
-- Property LOB: two lightweight policy coverage PDFs.
+- Auto LOB: two customer-specific policy PDFs, one for each synthetic user.
+- Property LOB: two customer-specific policy PDFs, one for each synthetic user.
+- Basic owner isolation using verified authentication and mandatory owner-and-LOB retrieval filters.
+- Richer ACLs, delegated access, and policy sharing are future extensions.
 - Metadata extraction and validation.
 - Amazon Bedrock Knowledge Base for document ingestion, indexing, and retrieval.
 - Offline ingestion pipeline and online query pipeline.
@@ -20,17 +22,31 @@ Deploy a small AWS proof of concept that answers policy coverage questions from 
 
 ### 1. Create policy documents
 
-- Create four synthetic PDFs with coverage, limits, deductibles, and exclusions.
+- Create four synthetic PDFs with coverage, limits, deductibles, and exclusions, using synthetic customer identities.
+
+| Document | Owner | Product |
+|---|---|---|
+| Auto policy 1 | User 1 | Standard Auto |
+| Auto policy 2 | User 2 | Standard Auto |
+| Property policy 1 | User 1 | Standard Property |
+| Property policy 2 | User 2 | Standard Property |
+
+- Each Auto PDF covers bodily injury liability, property damage liability, collision, and comprehensive coverage. Auto property damage liability is distinct from the building and personal belongings coverage in the separate Property PDFs.
+- Give each user one policy per LOB for this POC, with deliberately different policy values. For example, use a $500 collision deductible for User 1 and $1,000 for User 2 so accidental mixing is detectable.
 - Keep documents small and easy to review.
 - Prepare questions with expected answers and supporting passages for each document.
-- Include questions that the documents cannot answer.
+- Include questions that the documents cannot answer and paired questions that must produce different answers for the two users.
 
 ### 2. Define and extract metadata
 
-- Define document ID, policy/product name, LOB, version, and effective date.
-- Extract and manually validate metadata for the four documents.
-- Prepare metadata for ingestion and LOB filtering.
-- Keep metadata extraction separate from document text parsing.
+- Define document ID, `owner_id`, `policy_id`, policy/product name, LOB, version, and effective date.
+- Use distinct document and policy IDs for each policy, and a stable owner ID linking each synthetic user’s Auto and Property policies.
+- Place these fields in a consistently labeled metadata block in each synthetic document.
+- Extract metadata using deterministic rules for those labels; do not use LLM extraction.
+- Validate required fields, expected owner-to-policy mappings, allowed LOB values, and date format, and flag missing or invalid values for correction before ingestion.
+- Manually compare extracted metadata against each of the four PDFs before ingestion.
+- Prepare metadata for ingestion and owner-and-LOB filtering.
+- Keep metadata extraction logic separate from document text parsing; extraction may consume the parsed text.
 
 ### 3. Build the offline ingestion pipeline
 
@@ -49,25 +65,29 @@ Flow: S3 documents and metadata → text parsing → chunking → embeddings →
 
 - Configure text parsing and chunk size/overlap for the policy PDFs.
 - Select a Bedrock embedding model and configure a compatible vector index in the backing retrieval store.
-- Preserve document ID, LOB, version, and source references on indexed chunks for filtering and citations.
+- Preserve document ID, `owner_id`, `policy_id`, LOB, version, and source references on indexed chunks for filtering and citations.
 - Run ingestion to populate the index and wait for successful completion.
-- Verify each of the four documents is retrievable, source references are correct, and LOB filters return only matching content before enabling online queries.
+- Verify each of the four documents is retrievable, source references are correct, and combined owner-and-LOB filters return only matching content before enabling online queries.
 - Re-run ingestion after document or metadata changes; rebuild and validate the index when embedding or chunking settings change.
 
 ### 5. Build the online query pipeline
 
-Flow: question + LOB → filtered retrieval → Bedrock answer generation → answer with citations.
+Flow: verified owner identity + question + LOB → owner-and-LOB filtered retrieval → Bedrock answer generation → answer with citations.
 
-- Require a supported LOB and apply it as a retrieval filter.
+- Require a supported LOB and a verified owner identity. Apply both `owner_id` and LOB as mandatory retrieval filters before content reaches answer generation.
+- Reject requests with missing or unmapped owner identity; never fall back to unfiltered retrieval.
+- Keep answers and citations within the authenticated owner’s selected LOB, including when the question asks about another user’s policy.
 - Generate answers grounded in retrieved policy content.
 - Return document citations with supported answers.
 - Return an insufficient-information response when the documents do not support an answer.
 
 ### 6. Expose the query API
 
-Flow: API Gateway → Lambda → online query pipeline.
+Flow: API Gateway with authentication → Lambda → online query pipeline.
 
 - Accept a question and LOB.
+- Derive `owner_id` from verified authentication context through a trusted mapping; do not trust caller-supplied owner IDs as authorization.
+- Reject unauthenticated requests and identities without an authorized owner mapping. A local test harness may simulate identities; deployed API tests must use verified authentication.
 - Return the answer, citations, and request ID.
 - Validate input and return clear errors.
 - Use appropriate API access controls and least-privilege AWS permissions.
@@ -77,10 +97,10 @@ Flow: API Gateway → Lambda → online query pipeline.
 Begin Terraform work alongside pipeline development so the required AWS resources are available.
 
 1. Bootstrap Terraform state storage.
-2. Provision infrastructure, permissions, knowledge base and vector index resources, and observability.
+2. Provision infrastructure, API authentication and owner identity mapping, permissions, knowledge base and vector index resources, and observability.
 3. Package and deploy the Lambda application and API.
 4. Upload the documents and metadata, then run ingestion and indexing.
-5. Verify indexed content and LOB filtering, then run smoke tests against the deployed API.
+5. Verify indexed content and owner-and-LOB filtering, then run smoke tests against the deployed API.
 
 Keep environment-specific configuration outside application code.
 
@@ -90,12 +110,12 @@ Keep environment-specific configuration outside application code.
 
 - Record ingestion status, documents processed or failed, duration, and failure reasons.
 - Make failed ingestion runs visible in logs and metrics.
-- Record index validation results, including missing documents, incorrect source references, and LOB filter failures.
+- Record index validation results, including missing documents, incorrect source references, and owner or LOB filter failures.
 
 #### Online queries
 
 - Use structured logs with a request ID to correlate API and pipeline activity.
-- Track request volume, API/Lambda errors, response latency, and Lambda throttling.
+- Track request volume, authentication/authorization failures, API/Lambda errors, response latency, and Lambda throttling.
 - Record retrieval result counts, citation presence, and insufficient-information responses.
 - Track model token usage where available.
 
@@ -118,7 +138,10 @@ Keep environment-specific configuration outside application code.
 - Update a document and its metadata, re-run ingestion, and verify retrieval reflects the new version.
 - Check supported questions across all four documents.
 - Verify answers and citations against the expected policy passages.
-- Verify Auto queries retrieve only Auto content and Property queries retrieve only Property content.
+- For each user, verify Auto queries retrieve only their Auto content and Property queries retrieve only their Property content.
+- Ask the same deductible or limit question as both users and verify each answer and citation matches that user’s policy.
+- Attempt to request another user’s policy through question text and caller-supplied owner IDs; verify no other owner’s content appears in retrieval results, answers, or citations.
+- Verify missing or invalid authentication and unmapped identities are rejected before retrieval.
 - Check unsupported questions return insufficient information.
 - Check invalid API inputs produce clear errors.
 - Introduce a controlled failure to verify logs, metrics, and alarm delivery.
@@ -127,7 +150,9 @@ Keep environment-specific configuration outside application code.
 
 - All four PDFs and their validated metadata are successfully ingested, indexed, and verified through retrieval checks.
 - One deployed API answers the predefined test set with accurate document citations.
-- LOB filtering prevents retrieval from the other LOB.
+- Mandatory owner-and-LOB filtering prevents retrieval from another owner or LOB.
+- The deployed API derives owner identity from verified authentication and rejects missing, invalid, or unmapped identities.
+- Isolation tests confirm that answers and citations contain only the authenticated owner’s selected LOB content.
 - Unsupported questions produce an insufficient-information response.
 - Terraform supports bootstrap, infrastructure provisioning, and API/Lambda deployment.
 - CloudWatch dashboards show ingestion and query activity.

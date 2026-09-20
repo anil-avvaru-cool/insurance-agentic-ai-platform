@@ -2,6 +2,9 @@
 
 Start with [Phase 1: start here](docs/PHASE_1_START_HERE.md) for the local demo, tests, AWS sequence and teardown checklist.
 
+The [AWS POC policy corpus](policies/aws_poc/README.md) contains four synthetic
+policy PDFs and expected coverage question answers for the AWS coverage POC.
+
 [Understand the codebase](docs/codebase_guide.md) for component responsibilities,
 source entrypoints, request flow, and a suggested reading order.
 

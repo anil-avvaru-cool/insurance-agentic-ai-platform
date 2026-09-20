@@ -1,0 +1,146 @@
+[
+  {
+    "metadata": {
+      "document_id": "auto_user_1_v1",
+      "owner_id": "customer_one",
+      "policy_id": "POC_AUTO_001",
+      "product_name": "Standard Auto",
+      "lob": "auto",
+      "version": "1",
+      "effective_date": "2026-01-01"
+    },
+    "customer_name": "Avery Sample",
+    "passages": [
+      {
+        "id": "scope",
+        "text": "Named insured: Avery Sample. Coverage applies during the policy period shown above, subject to the limits, deductibles, and exclusions below. All amounts are in US dollars."
+      },
+      {
+        "id": "bodily_injury",
+        "text": "Bodily injury liability covers damages for bodily injury to others caused by an auto accident for which the insured is legally responsible. The limit is $100,000 per person and $300,000 per accident. No deductible applies."
+      },
+      {
+        "id": "property_damage",
+        "text": "Property damage liability covers damage to property belonging to others caused by an auto accident for which the insured is legally responsible. The limit is $50,000 per accident. No deductible applies. This is not coverage for the insured building or personal belongings under a Property policy."
+      },
+      {
+        "id": "collision",
+        "text": "Collision covers direct physical damage to the insured vehicle from impact with another vehicle or object, or overturn. Payment is limited to the actual cash value of the vehicle immediately before the loss, less a $500 deductible per covered loss."
+      },
+      {
+        "id": "comprehensive",
+        "text": "Comprehensive covers direct physical damage to the insured vehicle from theft, fire, hail, vandalism, or contact with an animal. Payment is limited to the actual cash value of the vehicle immediately before the loss, less a $250 deductible per covered loss."
+      },
+      {
+        "id": "exclusions",
+        "text": "No coverage applies to intentional damage, racing, or use of the vehicle to carry passengers for a fee. Collision and comprehensive exclude wear and tear, mechanical breakdown, and personal belongings inside the vehicle."
+      }
+    ]
+  },
+  {
+    "metadata": {
+      "document_id": "property_user_1_v1",
+      "owner_id": "customer_one",
+      "policy_id": "POC_PROPERTY_001",
+      "product_name": "Standard Property",
+      "lob": "property",
+      "version": "1",
+      "effective_date": "2026-01-01"
+    },
+    "customer_name": "Avery Sample",
+    "passages": [
+      {
+        "id": "scope",
+        "text": "Named insured: Avery Sample. Coverage applies during the policy period shown above, subject to the limits, deductibles, and exclusions below. All amounts are in US dollars."
+      },
+      {
+        "id": "building",
+        "text": "Building coverage covers direct physical damage to the insured dwelling caused by fire, lightning, windstorm, hail, or vandalism. The limit is $300,000 per covered loss. Settlement is based on repair or replacement cost, subject to the limit and the policy deductible."
+      },
+      {
+        "id": "belongings",
+        "text": "Personal belongings coverage covers belongings owned by the insured while inside the insured dwelling against fire, lightning, windstorm, hail, vandalism, or theft. The limit is $150,000 per covered loss. Settlement is based on actual cash value, subject to the limit and the policy deductible."
+      },
+      {
+        "id": "deductible",
+        "text": "A single $1,000 deductible applies per covered loss to the combined building and personal belongings payment, even if both coverages apply to the same event. Each coverage remains subject to its own limit."
+      },
+      {
+        "id": "exclusions",
+        "text": "Building and personal belongings coverage exclude flood, earthquake, wear and tear, gradual deterioration, and intentional damage. Vehicles and property belonging to others are not covered. This Property policy does not provide auto property damage liability coverage."
+      }
+    ]
+  },
+  {
+    "metadata": {
+      "document_id": "auto_user_2_v1",
+      "owner_id": "customer_two",
+      "policy_id": "POC_AUTO_002",
+      "product_name": "Standard Auto",
+      "lob": "auto",
+      "version": "1",
+      "effective_date": "2026-01-01"
+    },
+    "customer_name": "Jordan Example",
+    "passages": [
+      {
+        "id": "scope",
+        "text": "Named insured: Jordan Example. Coverage applies during the policy period shown above, subject to the limits, deductibles, and exclusions below. All amounts are in US dollars."
+      },
+      {
+        "id": "bodily_injury",
+        "text": "Bodily injury liability covers damages for bodily injury to others caused by an auto accident for which the insured is legally responsible. The limit is $250,000 per person and $500,000 per accident. No deductible applies."
+      },
+      {
+        "id": "property_damage",
+        "text": "Property damage liability covers damage to property belonging to others caused by an auto accident for which the insured is legally responsible. The limit is $100,000 per accident. No deductible applies. This is not coverage for the insured building or personal belongings under a Property policy."
+      },
+      {
+        "id": "collision",
+        "text": "Collision covers direct physical damage to the insured vehicle from impact with another vehicle or object, or overturn. Payment is limited to the actual cash value of the vehicle immediately before the loss, less a $1,000 deductible per covered loss."
+      },
+      {
+        "id": "comprehensive",
+        "text": "Comprehensive covers direct physical damage to the insured vehicle from theft, fire, hail, vandalism, or contact with an animal. Payment is limited to the actual cash value of the vehicle immediately before the loss, less a $500 deductible per covered loss."
+      },
+      {
+        "id": "exclusions",
+        "text": "No coverage applies to intentional damage, racing, or use of the vehicle to carry passengers for a fee. Collision and comprehensive exclude wear and tear, mechanical breakdown, and personal belongings inside the vehicle."
+      }
+    ]
+  },
+  {
+    "metadata": {
+      "document_id": "property_user_2_v1",
+      "owner_id": "customer_two",
+      "policy_id": "POC_PROPERTY_002",
+      "product_name": "Standard Property",
+      "lob": "property",
+      "version": "1",
+      "effective_date": "2026-01-01"
+    },
+    "customer_name": "Jordan Example",
+    "passages": [
+      {
+        "id": "scope",
+        "text": "Named insured: Jordan Example. Coverage applies during the policy period shown above, subject to the limits, deductibles, and exclusions below. All amounts are in US dollars."
+      },
+      {
+        "id": "building",
+        "text": "Building coverage covers direct physical damage to the insured dwelling caused by fire, lightning, windstorm, hail, or vandalism. The limit is $500,000 per covered loss. Settlement is based on repair or replacement cost, subject to the limit and the policy deductible."
+      },
+      {
+        "id": "belongings",
+        "text": "Personal belongings coverage covers belongings owned by the insured while inside the insured dwelling against fire, lightning, windstorm, hail, vandalism, or theft. The limit is $250,000 per covered loss. Settlement is based on actual cash value, subject to the limit and the policy deductible."
+      },
+      {
+        "id": "deductible",
+        "text": "A single $2,500 deductible applies per covered loss to the combined building and personal belongings payment, even if both coverages apply to the same event. Each coverage remains subject to its own limit."
+      },
+      {
+        "id": "exclusions",
+        "text": "Building and personal belongings coverage exclude flood, earthquake, wear and tear, gradual deterioration, and intentional damage. Vehicles and property belonging to others are not covered. This Property policy does not provide auto property damage liability coverage."
+      }
+    ]
+  }
+]
