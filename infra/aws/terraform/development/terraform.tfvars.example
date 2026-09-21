@@ -1,15 +1,14 @@
-# Replace the account placeholder before planning. Verify RDS version in your region.
+# Replace the account placeholder before planning.
 aws_region = "us-east-1"
 aws_account_id = "000000000000"
 project_name = "insurance"
 environment = "development"
 owner = "insurance_platform_team"
-postgres_engine_version = "16.6"
-postgres_parameter_family = "postgres16"
-db_instance_class = "db.t4g.micro"
-db_allocated_storage_gib = 20
-db_deletion_protection = true
-final_snapshot_identifier = "insurancedevelopmentfinal20260913"
 
-# Infrastructure is mandatory; image configuration belongs in ../runtime.
 bedrock_model_id = "amazon.nova-lite-v1:0"
+
+# Offline ingestion defaults; the CLI consumes Terraform's ingestion_environment output.
+knowledge_poc_prefix = "approved/aws_poc/"
+knowledge_ingestion_timeout_seconds = 900
+# Optional: attach scoped ingestion permissions to your existing operator IAM role.
+# ingestion_runner_role_name = "insurance_ingestion_operator"

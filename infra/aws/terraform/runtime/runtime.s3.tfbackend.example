@@ -1,4 +1,0 @@
-bucket = "insurance000000000000tfstateuseast1"
-key = "runtime/terraform.tfstate"
-region = "us-east-1"
-allowed_account_ids = ["000000000000"]

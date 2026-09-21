@@ -39,6 +39,6 @@ variable "environment" {
 variable "owner" { type = string }
 locals {
   name = "${var.project_name}_${var.environment}"
-  # S3 and RDS forbid underscores: omit separators for those AWS names.
+  # S3 bucket names forbid underscores: omit separators for those AWS names.
   aws_name = replace(local.name, "_", "")
 }

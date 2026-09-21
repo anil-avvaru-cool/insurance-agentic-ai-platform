@@ -18,7 +18,13 @@ Deploy a small AWS proof of concept that answers policy coverage questions from 
 - Observability for ingestion, queries, and answer quality.
 - End-to-end testing with a predefined set of questions.
 
+## Resource inventory
+
+See [Phase 1 AWS resource inventory and deployment order](PHASE_1_AWS_RESOURCE_INVENTORY.md) for resource purposes, priorities, implementation status, dependencies, and acceptance gates.
+
 ## Implementation Plan
+
+The numbered steps group related work; they are not a strictly sequential deployment order. Complete steps 1 and 2, then configure indexing from step 4 and provision the offline AWS resources from step 7 before running step 3 against AWS. After ingestion, complete step 4's retrieval validation before enabling online queries in steps 5 and 6. Add the relevant observability from step 8 alongside each pipeline.
 
 ### 1. Create policy documents
 
@@ -52,10 +58,25 @@ Deploy a small AWS proof of concept that answers policy coverage questions from 
 
 Flow: PDFs → metadata preparation and validation → S3 → Bedrock Knowledge Base ingestion and indexing.
 
-- Store PDFs and associated metadata in S3.
-- Configure the knowledge base and its backing retrieval store.
-- Run ingestion when documents are added or changed.
-- Track ingestion completion and surface failures.
+Prerequisites for an AWS ingestion run:
+
+- Complete the four-document corpus and metadata review from steps 1 and 2.
+- Complete the pre-ingestion configuration in step 4. Use step 7's Terraform workflow to provision the S3 document bucket, knowledge base, S3 data source, compatible vector index, and required IAM permissions.
+- Configure the AWS region, bucket, dedicated POC prefix, knowledge base ID, data source ID, and timeout outside application code. Ensure the data source reads the intended prefix, the ingestion runner can upload and start/inspect jobs, and the knowledge base can read documents and write embeddings.
+- Verify the required resources are deployed and accessible; Terraform definitions alone do not establish AWS readiness.
+
+Existing foundations: `scripts/prepare_poc_metadata.py` validates the corpus and checks sidecars; `scripts/bedrock_smoke.py` starts and polls ingestion jobs, including document-failure checks; `infra/aws/terraform/development/bedrock.tf` defines the storage, knowledge base, data source, embedding model, and chunking configuration. Reuse these components and adjust their configuration for this POC.
+
+Implement one repeatable CLI command for the four-document POC:
+
+- Validate the entire corpus and check that all metadata sidecars are current before uploading anything. Fail without uploading if validation fails.
+- Upload only the four approved PDFs and matching `*.pdf.metadata.json` sidecars to the dedicated POC prefix. Exclude README files, source JSON, review records, and question fixtures.
+- Start ingestion only after all uploads succeed. Use an explicit command when documents or metadata are added, changed, or removed; event-driven automation is outside the initial POC scope.
+- Support safe reruns, prevent overlapping runs from syncing incomplete uploads, and define how revised policies replace prior versions so obsolete content does not remain retrievable. Limit any cleanup to the managed POC inventory.
+- Record the ingestion job ID, status, duration, document statistics, and failure reasons. Exit unsuccessfully on job failure, document failures, or timeout; retain the job ID so a timed-out job can be inspected before retrying.
+- Test validation failures, partial upload failures, ingestion failures, timeouts, and reruns. Document the command and required configuration.
+
+Step 3 is complete when the command uploads the validated corpus and finishes ingestion without document failures, with a reviewable run report. Successful ingestion does not establish retrieval correctness or owner isolation; those are step 4's acceptance checks.
 
 ### 4. Configure and validate document indexing
 
@@ -63,12 +84,17 @@ Indexing runs as part of the offline Bedrock Knowledge Base ingestion job.
 
 Flow: S3 documents and metadata → text parsing → chunking → embeddings → retrieval index.
 
-- Configure text parsing and chunk size/overlap for the policy PDFs.
-- Select a Bedrock embedding model and configure a compatible vector index in the backing retrieval store.
-- Preserve document ID, `owner_id`, `policy_id`, LOB, version, and source references on indexed chunks for filtering and citations.
-- Run ingestion to populate the index and wait for successful completion.
+Before the first ingestion run:
+
+- Configure text parsing and chunk size/overlap for the policy PDFs through Terraform.
+- Select a Bedrock embedding model and configure a compatible vector index in the backing retrieval store. Review the existing Titan Text Embeddings V2, 1,024-dimension S3 Vectors index, and fixed-size 300-token/15% overlap configuration as the initial POC settings.
+- Configure metadata and source preservation so indexed chunks carry document ID, `owner_id`, `policy_id`, LOB, version, and source references, with `owner_id` and LOB available for filtering.
+
+After running the step 3 ingestion command:
+
 - Verify each of the four documents is retrievable, source references are correct, and combined owner-and-LOB filters return only matching content before enabling online queries.
-- Re-run ingestion after document or metadata changes; rebuild and validate the index when embedding or chunking settings change.
+- Verify a revised document and its metadata become retrievable and superseded content is no longer returned.
+- Re-run the step 3 command after document or metadata changes; rebuild and validate the index when embedding or chunking settings change.
 
 ### 5. Build the online query pipeline
 
@@ -94,13 +120,13 @@ Flow: API Gateway with authentication → Lambda → online query pipeline.
 
 ### 7. Deploy with Terraform
 
-Begin Terraform work alongside pipeline development so the required AWS resources are available.
+Begin Terraform work alongside pipeline development. Offline infrastructure is a prerequisite for the first AWS ingestion run; API/Lambda deployment is not.
 
 1. Bootstrap Terraform state storage.
-2. Provision infrastructure, API authentication and owner identity mapping, permissions, knowledge base and vector index resources, and observability.
-3. Package and deploy the Lambda application and API.
-4. Upload the documents and metadata, then run ingestion and indexing.
-5. Verify indexed content and owner-and-LOB filtering, then run smoke tests against the deployed API.
+2. Provision the offline infrastructure: S3 document storage, knowledge base, S3 data source, vector index, required permissions, and ingestion observability, using step 4's indexing configuration. Reuse the existing development Terraform resources where appropriate.
+3. Run the step 3 command to upload documents and metadata and complete ingestion; perform step 4's retrieval and owner-and-LOB filter validation.
+4. Provision API authentication, trusted owner identity mapping, online permissions, and query observability; package and deploy the Lambda application and API from steps 5 and 6. Enable online queries only after indexing validation passes.
+5. Run smoke tests against the authenticated deployed API, followed by step 9's end-to-end checks.
 
 Keep environment-specific configuration outside application code.
 

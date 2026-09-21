@@ -1,6 +1,6 @@
 # Insurance agentic AI platform
 
-Start with [Phase 1: start here](docs/PHASE_1_START_HERE.md) for the local demo, tests, AWS sequence and teardown checklist.
+Start with the [Phase 1 AWS POC plan](docs/PHASE_1_AWS_POC_PLAN.md) and [Terraform setup](infra/aws/terraform/README.md) for the AWS deployment scope and sequence.
 
 The [AWS POC policy corpus](policies/aws_poc/README.md) contains four synthetic
 policy PDFs and expected coverage question answers for the AWS coverage POC.
@@ -143,3 +143,16 @@ The adapter uses [Bedrock Converse tool output](https://docs.aws.amazon.com/nova
 as structured data, then validates the schema and evidence locally; it executes no model tools.
 Only cloud-managed inference is allowed. Direct model-vendor APIs are prohibited.
 AWS Bedrock is implemented; Azure and Google Cloud require separate approved adapters.
+
+## Offline AWS POC ingestion
+
+See [the ingestion runbook](docs/OFFLINE_INGESTION.md) for the step 3 pipeline.
+After applying the development Terraform changes, run:
+
+```sh
+PYTHONPATH=src uv run --locked python scripts/ingest_poc.py \
+  --terraform-dir infra/aws/terraform/development
+```
+
+The command reads Terraform outputs, validates all four policies and metadata,
+checks live configuration, serializes uploads/sync, and saves a JSON run report.

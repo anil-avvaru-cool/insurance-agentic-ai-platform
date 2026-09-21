@@ -77,8 +77,8 @@ resource "aws_iam_role_policy" "knowledge" {
   policy = jsonencode({ Version = "2012-10-17", Statement = [
     { Effect = "Allow", Action = ["bedrock:InvokeModel"], Resource = [local.embedding_model_arn] },
     { Effect = "Allow", Action = ["s3:ListBucket"], Resource = [aws_s3_bucket.knowledge.arn],
-    Condition = { StringLike = { "s3:prefix" = ["approved/", "approved/*"] } } },
-    { Effect = "Allow", Action = ["s3:GetObject"], Resource = ["${aws_s3_bucket.knowledge.arn}/approved/*"] },
+    Condition = { StringLike = { "s3:prefix" = [var.knowledge_poc_prefix, "${var.knowledge_poc_prefix}*"] } } },
+    { Effect = "Allow", Action = ["s3:GetObject"], Resource = ["${aws_s3_bucket.knowledge.arn}/${var.knowledge_poc_prefix}*"] },
     { Effect = "Allow", Action = ["s3vectors:PutVectors", "s3vectors:GetVectors", "s3vectors:DeleteVectors", "s3vectors:QueryVectors", "s3vectors:GetIndex"], Resource = [aws_s3vectors_index.knowledge.index_arn] }
   ] })
 }
@@ -106,12 +106,12 @@ resource "aws_bedrockagent_knowledge_base" "service" {
 resource "aws_bedrockagent_data_source" "service" {
   name                 = "approved_service_documents"
   knowledge_base_id    = aws_bedrockagent_knowledge_base.service.id
-  data_deletion_policy = "RETAIN"
+  data_deletion_policy = "DELETE"
   data_source_configuration {
     type = "S3"
     s3_configuration {
       bucket_arn         = aws_s3_bucket.knowledge.arn
-      inclusion_prefixes = ["approved/"]
+      inclusion_prefixes = [var.knowledge_poc_prefix]
     }
   }
   vector_ingestion_configuration {

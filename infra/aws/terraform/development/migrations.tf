@@ -57,28 +57,3 @@ moved {
   from = aws_bedrockagent_data_source.service[0]
   to   = aws_bedrockagent_data_source.service
 }
-
-moved {
-  from = aws_ecr_repository.agentcore[0]
-  to   = aws_ecr_repository.agentcore
-}
-
-moved {
-  from = aws_iam_role.agentcore[0]
-  to   = aws_iam_role.agentcore
-}
-
-moved {
-  from = aws_iam_role_policy.agentcore[0]
-  to   = aws_iam_role_policy.agentcore
-}
-
-# Transfer these existing objects to the runtime root without deleting them.
-removed {
-  from = aws_bedrockagentcore_agent_runtime.service
-  lifecycle { destroy = false }
-}
-removed {
-  from = aws_iam_role_policy.worker_agentcore
-  lifecycle { destroy = false }
-}

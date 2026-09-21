@@ -6,6 +6,7 @@ import time
 import uuid
 
 from adapters.models.bedrock import client, converse, embed, retrieve
+from ingestion.jobs import poll_job
 
 
 def ingest(runtime=None):
@@ -16,18 +17,7 @@ def ingest(runtime=None):
     args = {"knowledgeBaseId": os.environ["BEDROCK_KNOWLEDGE_BASE_ID"],
             "dataSourceId": os.environ["BEDROCK_DATA_SOURCE_ID"]}
     job = runtime.start_ingestion_job(**args)["ingestionJob"]
-    deadline = time.monotonic() + timeout
-    while True:
-        job = runtime.get_ingestion_job(**args, ingestionJobId=job["ingestionJobId"])["ingestionJob"]
-        if job["status"] == "COMPLETE":
-            if job.get("statistics", {}).get("numberOfDocumentsFailed", 0):
-                raise RuntimeError(f"Ingestion completed with document failures: {job}")
-            return job
-        if job["status"] in ("FAILED", "STOPPED"):
-            raise RuntimeError(f"Ingestion unsuccessful: {job}")
-        if time.monotonic() >= deadline:
-            raise TimeoutError(f"Ingestion still running: {job['ingestionJobId']}; inspect it before starting another")
-        time.sleep(min(5, max(0, deadline - time.monotonic())))
+    return poll_job(runtime, args, job, timeout, clock=time.monotonic, sleep=time.sleep)
 
 
 def main():

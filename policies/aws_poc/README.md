@@ -123,4 +123,5 @@ against the corresponding PDF's document reference block, correct mismatches,
 and update this review record before ingestion. Automated source comparison
 supplements that review.
 
-AWS ingestion, indexing, and answer quality evaluation remain later plan steps.
+The [offline ingestion command](../../docs/OFFLINE_INGESTION.md) implements step 3.
+Successful AWS ingestion and step 4 retrieval checks remain deployment acceptance gates.
