@@ -36,7 +36,8 @@ resource "aws_iam_policy" "ingestion_runner" {
     { Effect = "Allow", Action = ["s3:PutObject"], Resource = local.poc_document_arns },
     { Effect = "Allow", Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"], Resource = ["${aws_s3_bucket.knowledge.arn}/${local.ingestion_lock_key}"] },
     { Effect = "Allow", Action = ["bedrock:GetKnowledgeBase", "bedrock:GetDataSource", "bedrock:ListIngestionJobs", "bedrock:StartIngestionJob", "bedrock:GetIngestionJob"], Resource = [aws_bedrockagent_knowledge_base.service.arn] },
-    { Effect = "Allow", Action = ["s3vectors:GetIndex"], Resource = [aws_s3vectors_index.knowledge.index_arn] }
+    { Effect = "Allow", Action = ["s3vectors:GetIndex"], Resource = [aws_s3vectors_index.knowledge.index_arn] },
+    { Effect = "Allow", Action = ["logs:CreateLogStream", "logs:PutLogEvents"], Resource = ["${aws_cloudwatch_log_group.ingestion.arn}:*"] }
   ] })
 }
 resource "aws_iam_role_policy_attachment" "ingestion_runner" {

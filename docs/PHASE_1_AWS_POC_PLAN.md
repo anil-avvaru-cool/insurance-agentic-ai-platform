@@ -145,10 +145,10 @@ Keep environment-specific configuration outside application code.
 - Record retrieval result counts, citation presence, and insufficient-information responses.
 - Track model token usage where available.
 
-#### Dashboards and alarms
+#### Dashboard and logs
 
 - Create a CloudWatch dashboard for request volume, errors, latency, throttling, and ingestion failures.
-- Configure CloudWatch alarms for API/Lambda errors, throttling, and ingestion failures, with an alert destination.
+- Review logs and the dashboard during operator-run ingestion and API tests. Automated alarms and alert delivery are outside Phase 1 scope; revisit them if the POC runs unattended or supports ongoing users.
 - Set log retention explicitly.
 - Avoid logging full policy documents or user questions by default.
 - Provision observability resources through Terraform.
@@ -170,7 +170,7 @@ Keep environment-specific configuration outside application code.
 - Verify missing or invalid authentication and unmapped identities are rejected before retrieval.
 - Check unsupported questions return insufficient information.
 - Check invalid API inputs produce clear errors.
-- Introduce a controlled failure to verify logs, metrics, and alarm delivery.
+- Introduce a controlled failure to verify logs and metrics; verify ingestion failures also produce an unsuccessful CLI exit and a reviewable run report.
 
 ## Completion Criteria
 
@@ -182,5 +182,5 @@ Keep environment-specific configuration outside application code.
 - Unsupported questions produce an insufficient-information response.
 - Terraform supports bootstrap, infrastructure provisioning, and API/Lambda deployment.
 - CloudWatch dashboards show ingestion and query activity.
-- A controlled failure demonstrates that logs and alarms work.
+- A controlled failure demonstrates that logs and metrics expose failures, and failed ingestion exits unsuccessfully with a reviewable run report.
 - Deployment and test instructions are documented so the POC can be repeated.

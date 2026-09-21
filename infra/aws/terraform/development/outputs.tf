@@ -8,3 +8,6 @@ output "bedrock" {
     vector_index_arn   = aws_s3vectors_index.knowledge.index_arn
   }
 }
+output "query_endpoint" {
+  value = var.enable_query_api ? "${aws_apigatewayv2_api.query[0].api_endpoint}/query" : null
+}

@@ -12,3 +12,28 @@ knowledge_poc_prefix = "approved/aws_poc/"
 knowledge_ingestion_timeout_seconds = 900
 # Optional: attach scoped ingestion permissions to your existing operator IAM role.
 # ingestion_runner_role_name = "insurance_ingestion_operator"
+
+# Phase 1 monitoring is provisioned with the offline foundation.
+log_retention_days = 14
+# validation_runner_role_name = "insurance_validation_operator"
+
+# Optional managed identity provider. Apply this before enabling the API,
+# create users outside Terraform, then record their verified subjects below.
+create_cognito = false
+
+# Enable only after the query handler is implemented, packaged, and tested,
+# and offline retrieval/source/replacement/isolation checks have passed.
+enable_query_api = false
+index_validation_passed = false
+# query_lambda_zip = "/absolute/path/to/query.zip"
+# query_lambda_handler = "query.handler"
+# owner_by_subject = {
+#   "verified-subject-one" = "customer_one"
+#   "verified-subject-two" = "customer_two"
+# }
+# Existing issuer settings (omit these when create_cognito = true):
+# jwt_issuer = "https://your-issuer.example.com"
+# jwt_audience = ["your-query-client"]
+# jwt_scopes = ["policy:query"]
+query_timeout_seconds = 28
+query_max_tokens = 512
