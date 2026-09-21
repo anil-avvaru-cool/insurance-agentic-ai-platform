@@ -33,7 +33,7 @@ flowchart LR
     CW --> Dashboard[Dashboard]
 ```
 
-The knowledge base invokes the embedding model during indexing. The query Lambda retrieves policy evidence and invokes the answer model. Neither model is a separately hosted application server in this design.
+The knowledge base invokes the embedding model during indexing and to embed retrieval queries. The query Lambda retrieves policy evidence and invokes the answer model. Neither model is a separately hosted application server in this design.
 
 ## 1. Bootstrap: Terraform state
 
@@ -54,7 +54,7 @@ Backend locking uses the configured S3 lockfile; no DynamoDB lock table is plann
 
 ## 2. Offline ingestion and retrieval: current development resources
 
-**Order: after bootstrap, before the first AWS ingestion run.** Keep all 13 resources below; versioning is optional but retained for recovery.
+**Order: after bootstrap, before the first AWS ingestion run.** The implementation retains all 13 resources below. Versioning is optional in the design but enabled unconditionally in Terraform for recovery.
 
 Sources: [bedrock.tf](../infra/aws/terraform/development/bedrock.tf) and [ingestion.tf](../infra/aws/terraform/development/ingestion.tf).
 
@@ -145,7 +145,7 @@ Application and CLI code must emit these events; provisioning log groups or a da
 |---|---|---|
 | Four synthetic PDFs and four metadata sidecars | Must | Provide the complete reviewed POC corpus and filterable metadata. |
 | Embedding model selection | Must | Current configuration uses Titan Text Embeddings V2 at 1,024 dimensions; model and index dimensions must match. |
-| Answer model selection/access | Must | Current configured model ID is `amazon.nova-lite-v1:0`; verify account/region access before deployed tests. |
+| Answer model selection/access | Must | RAG answer generation uses `bedrock_rag_model_id` (default `amazon.nova-lite-v1:0`), passed to Lambda as `BEDROCK_RAG_MODEL_ID`; verify account/region access before deployed tests. |
 | Lambda ZIP artifact and dependency packaging | Must | Deploy the query application without an ECR/container dependency. |
 | Region, bucket/prefix, knowledge-base IDs, timeouts | Must | Keep environment configuration outside application code. |
 | Evaluation fixtures and run reports | Must | Establish correct answers, source citations, isolation, and unsupported-question behavior. |

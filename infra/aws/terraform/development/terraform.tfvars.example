@@ -5,7 +5,8 @@ project_name = "insurance"
 environment = "development"
 owner = "insurance_platform_team"
 
-bedrock_model_id = "amazon.nova-lite-v1:0"
+bedrock_rag_model_id = "amazon.nova-lite-v1:0"
+knowledge_bucket_versioning_enabled = false
 
 # Offline ingestion defaults; the CLI consumes Terraform's ingestion_environment output.
 knowledge_poc_prefix = "approved/aws_poc/"

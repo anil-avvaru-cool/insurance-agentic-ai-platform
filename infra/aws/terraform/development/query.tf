@@ -74,7 +74,7 @@ resource "aws_iam_role_policy" "query" {
   role  = aws_iam_role.query[0].id
   policy = jsonencode({ Version = "2012-10-17", Statement = [
     { Effect = "Allow", Action = ["bedrock:Retrieve"], Resource = [aws_bedrockagent_knowledge_base.service.arn] },
-    { Effect = "Allow", Action = ["bedrock:InvokeModel"], Resource = [local.model_arn] },
+    { Effect = "Allow", Action = ["bedrock:InvokeModel"], Resource = [local.rag_model_arn] },
     { Effect = "Allow", Action = ["logs:CreateLogStream", "logs:PutLogEvents"], Resource = ["${aws_cloudwatch_log_group.query[0].arn}:*"] }
   ] })
 }
@@ -92,7 +92,7 @@ resource "aws_lambda_function" "query" {
   environment {
     variables = {
       BEDROCK_KNOWLEDGE_BASE_ID = aws_bedrockagent_knowledge_base.service.id
-      BEDROCK_MODEL_ID          = var.bedrock_model_id
+      BEDROCK_RAG_MODEL_ID      = var.bedrock_rag_model_id
       JWT_ISSUER                = local.jwt_issuer
       OWNER_BY_SUBJECT_JSON     = jsonencode(var.owner_by_subject)
       MODEL_MAX_TOKENS          = tostring(var.query_max_tokens)

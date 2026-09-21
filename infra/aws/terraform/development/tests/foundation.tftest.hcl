@@ -13,12 +13,22 @@ run "bedrock_foundation" {
     error_message = "Embedding dimensions must match and document text must be non-filterable."
   }
   assert {
-    condition     = aws_s3_bucket_public_access_block.knowledge.block_public_policy && aws_s3_bucket_public_access_block.knowledge.restrict_public_buckets && !aws_s3_bucket.knowledge.force_destroy && aws_s3_bucket_versioning.knowledge.versioning_configuration[0].status == "Enabled"
-    error_message = "Knowledge documents must be private and recoverable."
+    condition     = aws_s3_bucket_public_access_block.knowledge.block_public_policy && aws_s3_bucket_public_access_block.knowledge.restrict_public_buckets && !aws_s3_bucket.knowledge.force_destroy && aws_s3_bucket_versioning.knowledge.versioning_configuration[0].status == "Suspended"
+    error_message = "Knowledge documents must be private, protected from forced destruction, and have versioning suspended by default for the POC."
   }
   assert {
     condition     = aws_bedrockagent_data_source.service.data_source_configuration[0].s3_configuration[0].inclusion_prefixes == toset([var.knowledge_poc_prefix])
     error_message = "Ingestion must use only the approved POC prefix."
+  }
+}
+run "knowledge_versioning_enabled" {
+  command = plan
+  variables {
+    knowledge_bucket_versioning_enabled = true
+  }
+  assert {
+    condition     = aws_s3_bucket_versioning.knowledge.versioning_configuration[0].status == "Enabled"
+    error_message = "Knowledge bucket versioning must be enabled when explicitly requested."
   }
 }
 run "poc_ingestion" {

@@ -1,16 +1,21 @@
-variable "bedrock_model_id" {
-  description = "Regional on-demand Converse model ID; inference profiles require different IAM configuration."
+variable "bedrock_rag_model_id" {
+  description = "RAG answer-generation regional on-demand Converse model ID; inference profiles require different IAM configuration."
   type        = string
   default     = "amazon.nova-lite-v1:0"
   validation {
-    condition     = can(regex("^[a-z0-9]+\\.[A-Za-z0-9.:-]+$", var.bedrock_model_id)) && !can(regex("^(us|eu|apac|global)\\.", var.bedrock_model_id))
+    condition     = can(regex("^[a-z0-9]+\\.[A-Za-z0-9.:-]+$", var.bedrock_rag_model_id)) && !can(regex("^(us|eu|apac|global)\\.", var.bedrock_rag_model_id))
     error_message = "Use a regional foundation model ID, not an inference profile or ARN."
   }
+}
+variable "knowledge_bucket_versioning_enabled" {
+  description = "Enable versioning for knowledge documents. False suspends versioning without deleting existing versions."
+  type        = bool
+  default     = false
 }
 locals {
   embedding_model_id  = "amazon.titan-embed-text-v2:0"
   embedding_dimension = 1024
-  model_arn           = "arn:aws:bedrock:${var.aws_region}::foundation-model/${var.bedrock_model_id}"
+  rag_model_arn       = "arn:aws:bedrock:${var.aws_region}::foundation-model/${var.bedrock_rag_model_id}"
   embedding_model_arn = "arn:aws:bedrock:${var.aws_region}::foundation-model/${local.embedding_model_id}"
 }
 resource "aws_s3_bucket" "knowledge" {
@@ -30,7 +35,7 @@ resource "aws_s3_bucket_ownership_controls" "knowledge" {
 }
 resource "aws_s3_bucket_versioning" "knowledge" {
   bucket = aws_s3_bucket.knowledge.id
-  versioning_configuration { status = "Enabled" }
+  versioning_configuration { status = var.knowledge_bucket_versioning_enabled ? "Enabled" : "Suspended" }
 }
 resource "aws_s3_bucket_server_side_encryption_configuration" "knowledge" {
   bucket = aws_s3_bucket.knowledge.id

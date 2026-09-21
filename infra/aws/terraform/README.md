@@ -104,6 +104,12 @@ The previous 39-resource development plan is obsolete. Generate and review a fre
 
 ## Offline policy ingestion
 
+Knowledge document bucket versioning defaults to off for the development POC.
+Set `knowledge_bucket_versioning_enabled = true` in development's `terraform.tfvars`
+to enable it. False sets the S3 status to `Suspended`, which also supports buckets
+that previously had versioning enabled; existing versions are retained.
+Bootstrap state bucket versioning remains enabled.
+
 The [Step 3 runbook](../../../docs/OFFLINE_INGESTION.md) documents the repeatable CLI,
 POC parameters, IAM attachment, stable inventory and failure recovery. The
 `ingestion_environment` output supplies all six ingestion settings automatically.
@@ -168,6 +174,11 @@ The root supplies a destination-scoped delivery resource policy; it does not man
 or broaden the external deployment identity. Verify actual delivery after apply.
 JWT route scopes follow the [AWS authorizer contract](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-jwt-authorizer.html).
 
+The RAG answer model is configured with `bedrock_rag_model_id` and exported as
+`bedrock.rag_model_id`. Update existing tfvars and `TF_VAR_` overrides to this name.
+The query Lambda receives `BEDROCK_RAG_MODEL_ID`; the separate language adapter
+continues to use `BEDROCK_MODEL_ID`. Embedding model configuration is separate.
+
 ### Lambda artifact contract
 
 The ZIP must contain the configured Python 3.12 x86_64 handler and dependencies at
@@ -184,7 +195,7 @@ filters to every retrieval. Never use a body/header owner ID for authorization.
 Return answer, citations, and request ID; return insufficient information when
 retrieved evidence does not support an answer.
 
-Terraform supplies `BEDROCK_KNOWLEDGE_BASE_ID`, `BEDROCK_MODEL_ID`,
+Terraform supplies `BEDROCK_KNOWLEDGE_BASE_ID`, `BEDROCK_RAG_MODEL_ID`,
 `KNOWLEDGE_RESULT_COUNT`, `MODEL_MAX_TOKENS`, `MODEL_TEMPERATURE`, and
 `QUERY_DEADLINE_SECONDS`. Lambda supplies `AWS_REGION`. Enforce the overall deadline
 across retrieval, generation and SDK retries; the existing 120-second smoke-client
