@@ -6,7 +6,7 @@ These roots define the offline foundation and opt-in query infrastructure descri
 - `development` defines 22 resources by default: the original 13 offline resources, a validation-runner policy, an ingestion log group, six ingestion/index metric filters, and a dashboard. Enabling the query API adds 19 resources; optional Cognito adds two. Each configured operator policy attachment adds one.
 - Setting `ingestion_runner_role_name` adds one policy attachment to an existing operator role. Otherwise attach the exported policy through your identity system before ingestion.
 - RDS checkpoints, custom VPC networking, SQS, ECS roles, ECR and the AgentCore runtime are outside this POC and have been removed from these roots.
-- API Gateway, ZIP Lambda deployment, JWT authentication configuration, optional Cognito, and CloudWatch observability are defined. The query handler, artifact build, application telemetry emission, and live acceptance checks remain application work; infrastructure alone does not complete Phase 1.
+- API Gateway, ZIP Lambda deployment, JWT authentication configuration, optional Cognito, and CloudWatch observability are defined. The query handler and reproducible artifact build are included; ingestion telemetry emission and live acceptance checks remain application work, so infrastructure alone does not complete Phase 1.
 - Configuration is explicit in ignored `terraform.tfvars` and backend files copied from the examples. Terraform does not load the application `.env`.
 - Use AWS environment credentials or a deployment profile. Do not put application tokens or database passwords in Terraform.
 
@@ -155,7 +155,8 @@ bucket uses `force_destroy = true`; destroying it deletes state history as well.
    Retain their reports, then set `index_validation_passed = true`. This is an
    operator attestation, not an automated verification of those reports. Repeat
    validation after corpus or indexing changes.
-4. Build the query Lambda ZIP to the contract below. Configure `query_lambda_zip`
+4. Build the query Lambda ZIP with `scripts/build_query_lambda.sh` (it writes
+   `build/lambda/query.zip`) to the contract below. Configure `query_lambda_zip`
    (absolute path recommended), `query_lambda_handler`, and the two subject mappings.
    Set `enable_query_api = true`, generate a new saved plan, review, and apply it.
    Terraform hashes the ZIP to detect code changes. No placeholder handler is shipped.
@@ -183,7 +184,8 @@ continues to use `BEDROCK_MODEL_ID`. Embedding model configuration is separate.
 
 The ZIP must contain the configured Python 3.12 x86_64 handler and dependencies at
 its import root. The default is `query.py` exporting `handler(event, context)`.
-The repository's existing FastAPI and AgentCore applications are not this handler.
+The packaged `lambda/query.py` is this handler. The repository's existing FastAPI
+and AgentCore applications are not this handler.
 The existing Bedrock smoke retrieval helper does not enforce owner/LOB isolation
 and must not be used as the production query authorization path.
 

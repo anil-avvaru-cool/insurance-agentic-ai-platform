@@ -15,25 +15,78 @@ Status reflects the Phase 1 Terraform implementation. **Defined means present in
 
 A resource count includes IAM policies, bucket settings, and associations, not just running services. Reduce unused subsystems rather than removing security settings to achieve a smaller count.
 
-## Architecture
+## Architecture: two separate paths
+
+Phase 1 has an **offline path** that prepares and verifies the searchable corpus and an **online path** that answers authenticated customer requests. The online path must not be enabled until the offline validation gate passes. Bootstrap and monitoring support both paths but are not request-processing stages.
+
+### Offline: publish, ingest, and validate
 
 ```mermaid
-flowchart LR
-    CLI[Operator ingestion CLI] --> S3[Four PDFs and metadata in S3]
-    S3 --> KB[Bedrock Knowledge Base]
-    KB --> V[S3 Vectors index]
-    User[Authenticated user] --> API[API Gateway with authentication]
-    API --> Lambda[Lambda: trusted owner mapping and LOB validation]
-    Lambda -->|Mandatory owner and LOB filters| KB
-    Lambda --> Model[Bedrock answer model]
-    Lambda --> Answer[Answer, citations and request ID]
-    CLI --> CW[CloudWatch logs and metrics]
-    API --> CW
-    Lambda --> CW
-    CW --> Dashboard[Dashboard]
+sequenceDiagram
+    autonumber
+    participant Operator as Ingestion operator
+    participant S3 as S3 knowledge bucket
+    participant KB as Bedrock Knowledge Base
+    participant Embed as Titan embedding model
+    participant Vectors as S3 Vectors index
+    participant Logs as CloudWatch
+    Operator->>S3: Upload four approved PDFs and metadata
+    Operator->>KB: Start ingestion job
+    KB->>S3: Read approved documents and metadata
+    KB->>KB: Parse and chunk documents
+    KB->>Embed: Embed each chunk
+    Embed-->>KB: 1,024-dimensional vectors
+    KB->>Vectors: Store vectors and filterable metadata
+    KB-->>Operator: Return job status and counts
+    Operator->>KB: Test retrieval, citations, replacement, and isolation
+    KB-->>Operator: Return passages and source references
+    Operator->>Logs: Record ingestion and validation results
 ```
 
-The knowledge base invokes the embedding model during indexing and to embed retrieval queries. The query Lambda retrieves policy evidence and invokes the answer model. Neither model is a separately hosted application server in this design.
+“Offline” means that this is an operator-controlled preparation and validation path, not that it runs without AWS or network access. Retrieval in this path is a validation activity; it does not answer a customer request.
+
+### Online: authenticate, retrieve, generate, and respond
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Customer
+    participant API as API Gateway + JWT authorizer
+    participant Lambda as Query Lambda
+    participant KB as Bedrock Knowledge Base
+    participant Model as Bedrock answer model
+    participant Logs as CloudWatch
+    Customer->>API: POST /query with token, question, and LOB
+    API->>API: Validate JWT issuer, audience, and scope
+    API->>Lambda: Invoke with verified JWT claims
+    Lambda->>Lambda: Map subject to owner and validate question and LOB
+    Lambda->>KB: Retrieve with mandatory owner + LOB filters
+    KB-->>Lambda: Passages, metadata, and source references
+    alt Evidence supports an answer
+        Lambda->>Model: Prompt with question and retrieved evidence
+        Model-->>Lambda: Grounded draft answer and usage data
+        Lambda->>Lambda: Verify support and assemble safe citations
+    else Evidence is insufficient
+        Lambda->>Lambda: Build insufficient-information response
+    end
+    Lambda->>Logs: Write correlated query event
+    Lambda-->>API: HTTP result with answer, citations, and request ID
+    API-->>Customer: Return HTTP response
+```
+
+The query Lambda is the online orchestrator. It is intended to enforce authorization, call filtered retrieval, invoke the answer model, validate/assemble citations from retrieved source metadata, apply the insufficient-information behavior, emit telemetry, and format the HTTP response. The **model produces only a draft answer (and model usage data)**; it does not create the trusted request ID or independently authorize citations. Lambda obtains the request ID from the API/Lambda invocation context and returns it with the answer and citations.
+
+Terraform currently defines the Lambda resource, configuration, IAM permissions, API integration, and response requirements, but **the Lambda handler artifact is not implemented or shipped in this repository**. Therefore, the online sequence above is the required contract, not verified deployed behavior. The knowledge base invokes the embedding model during indexing and when embedding retrieval queries. Neither Bedrock model is a separately hosted application server in this design.
+
+The online response fields have different sources and should not be treated as one Bedrock model response:
+
+| Response field | Produced by | Trust rule |
+|---|---|---|
+| `answer` | Bedrock answer model drafts it; Lambda accepts it only when supported by retrieved evidence | Do not answer from model knowledge alone. Return the controlled insufficient-information response when evidence is inadequate. |
+| `citations` | Lambda assembles them from Knowledge Base retrieval results and their source metadata | Do not trust model-generated source names. Return only sources that passed the same owner-and-LOB-filtered retrieval. |
+| `request_id` | API Gateway request context, propagated by Lambda | Use for correlation only; it is not generated by the answer model and is not evidence. |
+
+The precise JSON response schema remains application work and must be fixed in the Lambda contract and deployed API tests before Phase 1 acceptance.
 
 ## 1. Bootstrap: Terraform state
 
@@ -52,7 +105,7 @@ Source: [bootstrap/main.tf](../infra/aws/terraform/bootstrap/main.tf).
 
 Backend locking uses the configured S3 lockfile; no DynamoDB lock table is planned. Deployment identities need scoped access to their state and lock keys. Workload identities must not receive state access. These identity permissions may be supplied by the existing account setup rather than new resources in this root.
 
-## 2. Offline ingestion and retrieval: current development resources
+## 2. Offline path: ingestion and retrieval validation resources
 
 **Order: after bootstrap, before the first AWS ingestion run.** The implementation retains all 13 resources below. Versioning is optional in the design but enabled unconditionally in Terraform for recovery.
 
@@ -85,7 +138,7 @@ Sources: [bedrock.tf](../infra/aws/terraform/development/bedrock.tf) and [ingest
 
 The lock is an S3 object managed by the ingestion application, not a new Terraform resource. The PDFs and sidecars are uploaded by the CLI, not managed as `aws_s3_object` resources.
 
-## 3. Authenticated query API: opt-in resources
+## 3. Online path: authenticated query resources
 
 **Order: after the offline infrastructure; enable query traffic only after retrieval and isolation validation passes.** Defined in `query.tf`, using a ZIP-packaged Lambda and an API Gateway HTTP API with JWT authentication. Resources use `[0]` when `enable_query_api = true`; deployment requires a readable artifact, two owner mappings, identity configuration, and `index_validation_passed = true`.
 
@@ -93,7 +146,7 @@ The lock is an S3 object managed by the ingestion application, not a new Terrafo
 |---|---|---|---|
 | `aws_iam_role.query` | Must | Defined | Lambda execution identity with a Lambda service trust policy. |
 | `aws_iam_role_policy.query` | Must | Defined | Grants knowledge-base retrieval, answer-model invocation, and scoped logging/telemetry permissions. |
-| `aws_lambda_function.query` | Must | Defined | Validates input, derives the trusted owner, applies owner-and-LOB retrieval filters, generates grounded answers, and returns citations and request ID. |
+| `aws_lambda_function.query` | Must | Infrastructure defined; handler artifact pending | Hosts the online orchestrator. The future handler must validate input and identity, derive the trusted owner, retrieve with owner-and-LOB filters, invoke the answer model, assemble verified citations, handle insufficient evidence, emit telemetry, and return the answer plus request ID. |
 | `aws_apigatewayv2_api.query` | Must | Defined | Defines the HTTP query API. |
 | `aws_apigatewayv2_authorizer.query` | Must for JWT design | Defined | Validates tokens from the selected issuer and audience before query execution. |
 | `aws_apigatewayv2_integration.query` | Must | Defined | Connects the API to Lambda. |
@@ -112,7 +165,7 @@ This is **nine defined resources**, excluding identity-provider resources and mo
 | `aws_cognito_user_pool_client.poc` | Conditional | Defined; opt-in | Configures the chosen client authentication flow and token audience. |
 | Cognito domain | Conditional | Not needed for selected flow | Optional Cognito uses SRP sign-in and refresh tokens without a hosted UI. |
 | Two synthetic test identities | Must capability | Provision through selected provider | Enable deployed tests for both owners. Avoid storing user passwords in Terraform configuration or state. |
-| Trusted identity-to-owner mapping | Must | Defined as configuration; handler enforcement pending | Maps verified issuer/subject identities to approved `owner_id` values. For two users, no database is required. |
+| Trusted identity-to-owner mapping | Must | Defined as configuration; handler enforcement pending | Maps verified issuer/subject identities to approved `owner_id` values. The future Lambda handler must use this mapping before retrieval. For two users, no database is required. |
 
 Authentication is not sufficient on its own. Reject valid but unmapped identities. Never accept a caller-supplied owner ID as authorization. Every retrieval must include both the mapped owner and the validated LOB before evidence reaches answer generation.
 
