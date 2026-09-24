@@ -51,13 +51,13 @@ class IntakeTests(unittest.TestCase):
     def test_unknown_is_explicit_and_can_be_reported(self):
         draft = complete_draft().update("injury_reported", Fact("unknown", "message", True))
         Confirmation.for_draft(draft).validate(draft)
-        with patch.dict(os.environ, AUTO_RULES_PATH="policies/auto_synthetic_v1.json"):
+        with patch.dict(os.environ, AUTO_RULES_PATH="config/business_rules/auto_synthetic_v1.json"):
             self.assertEqual(screen(draft).priority, "needs_clarification")
 
     def test_early_urgency_does_not_wait_for_complete_intake(self):
         for name, value in (("injury_reported", "yes"), ("drivable", "no")):
             draft = AutoDraft("draft").update(name, Fact(value, "message", False, True))
-            with patch.dict(os.environ, AUTO_RULES_PATH="policies/auto_synthetic_v1.json"):
+            with patch.dict(os.environ, AUTO_RULES_PATH="config/business_rules/auto_synthetic_v1.json"):
                 result = screen(draft)
             self.assertEqual(result.priority, "urgent")
             self.assertEqual(result.evidence_refs, ("message",))

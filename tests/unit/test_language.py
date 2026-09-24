@@ -97,7 +97,7 @@ class LanguageTests(unittest.TestCase):
                                source_ref=None).grounded('car struck')
 
     def test_sources_withdrawal_access_and_expiration(self):
-        catalogs = Catalogs('policies/local_catalogs_v1.json')
+        catalogs = Catalogs('config/business_rules/local_catalogs_v1.json')
         self.assertEqual(catalogs.answer('report_loss')['source_version'], '1')
         source = catalogs.data['sources'][0]
         for key, value in [('approved', False), ('audience', 'employee'),

@@ -10,7 +10,7 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-ROOT = Path(__file__).resolve().parents[1] / 'policies' / 'aws_poc'
+ROOT = Path(__file__).resolve().parents[1] / 'data' / 'sample_insurance_policies'
 NAVY = colors.HexColor('#193347')
 GRAY = colors.HexColor('#52616B')
 LIGHT = colors.HexColor('#EEF2F5')

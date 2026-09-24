@@ -1,4 +1,4 @@
-"""Explicit, serialized ingestion of the reviewed four-policy POC."""
+"""Upload four validated policy PDFs and metadata to S3, then run Bedrock ingestion, one run at a time."""
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
@@ -125,6 +125,7 @@ def snapshot(root):
 
 
 def run(settings, root, report_path, s3, agent, vectors, *, clock=time.monotonic, sleep=time.sleep):
+    """Validate and upload the POC corpus, then monitor ingestion under a lock and record the outcome."""
     started = clock()
     report = {'run_id': str(uuid.uuid4()), 'started_at': datetime.now(timezone.utc).isoformat(),
               'status': 'VALIDATING', 'bucket': settings.bucket, 'prefix': settings.prefix,

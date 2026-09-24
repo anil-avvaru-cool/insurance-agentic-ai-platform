@@ -27,7 +27,7 @@ online traffic before P2 passes.
 ### Query Lambda and API behavior
 
 - [ ] Reconcile the resource inventory with the current query implementation.
-  The inventory says the handler artifact is pending, while `lambda/query.py`,
+  The inventory says the handler artifact is pending, while `src/apps/query_lambda/query.py`,
   `scripts/build_query_lambda.sh`, and unit tests now exist in the working tree.
 - [ ] Complete review and local verification of the Lambda contract: accept only
   `question` and supported `lob`, derive the owner from verified JWT claims,
@@ -57,13 +57,20 @@ online traffic before P2 passes.
   production authorization path.
 - [ ] Emit the documented structured ingestion and index-validation events to
   CloudWatch. The log group and metric filters alone do not create telemetry.
-- [ ] Ensure every failed or timed-out ingestion exits nonzero and leaves a
+- [x] Ensure every failed or timed-out ingestion exits nonzero and leaves a
   reviewable report containing the job/run identifiers needed for recovery.
+  Implemented in `scripts/ingest_poc.py` and `src/ingestion/offline.py`; local
+  tests cover job/document failures, timeouts, lost start responses, polling
+  errors, and retained recovery identifiers. Live AWS verification remains open
+  above.
 
 ### Evaluation workload
 
-- [ ] Finalize expected answers and supporting passages for all four policies,
+- [x] Finalize expected answers and supporting passages for all four policies,
   including paired owner-specific questions and unsupported questions.
+  `tests/fixtures/aws_poc/questions.json` contains 36 cases: 24 supported questions
+  with supporting passages, eight unsupported questions, and four cross-owner
+  attempts. Paired cases cover both owners and both LOBs.
 - [ ] Automate the deployed authenticated test matrix for both users and both
   LOBs, including attempted cross-owner access and caller-supplied owner IDs.
 - [ ] Evaluate answer accuracy and citation correctness separately from the
@@ -178,4 +185,3 @@ checks all pass.
 - A dedicated model endpoint, metadata database, checkpoint store, event-driven
   ingestion, richer ACLs, delegated access, and policy sharing are outside the
   agreed Phase 1 scope.
-

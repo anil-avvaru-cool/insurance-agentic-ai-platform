@@ -184,7 +184,7 @@ continues to use `BEDROCK_MODEL_ID`. Embedding model configuration is separate.
 
 The ZIP must contain the configured Python 3.12 x86_64 handler and dependencies at
 its import root. The default is `query.py` exporting `handler(event, context)`.
-The packaged `lambda/query.py` is this handler. The repository's existing FastAPI
+The packaged `src/apps/query_lambda/query.py` is this handler. The repository's existing FastAPI
 and AgentCore applications are not this handler.
 The existing Bedrock smoke retrieval helper does not enforce owner/LOB isolation
 and must not be used as the production query authorization path.

@@ -15,8 +15,8 @@ class JourneyTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.env = patch.dict(os.environ, AUTO_RULES_PATH="policies/auto_synthetic_v1.json",
-                              CATALOGS_PATH="policies/local_catalogs_v1.json")
+        self.env = patch.dict(os.environ, AUTO_RULES_PATH="config/business_rules/auto_synthetic_v1.json",
+                              CATALOGS_PATH="config/business_rules/local_catalogs_v1.json")
         self.env.start()
         self.addCleanup(self.env.stop)
         self.app_path = str(Path(self.temp.name) / "app.sqlite3")
@@ -34,7 +34,7 @@ class JourneyTests(unittest.TestCase):
         self.base = "/v1/conversations/" + self.conversation
 
     def restart(self):
-        self.core = SyntheticCore("policies/local_fixtures.json", self.core_path)
+        self.core = SyntheticCore("tests/fixtures/local_fixtures.json", self.core_path)
         self.application = Application(Store(self.app_path), self.core)
         self.client = TestClient(create_app(self.application, self.identities))
 

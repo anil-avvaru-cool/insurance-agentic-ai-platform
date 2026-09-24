@@ -25,7 +25,7 @@ class PostgresJourneyTests(JourneyTests):
         cls.checkpoints.setup()
 
     def restart(self):
-        self.core = SyntheticCore("policies/local_fixtures.json", self.core_path)
+        self.core = SyntheticCore("tests/fixtures/local_fixtures.json", self.core_path)
         self.application = Application(Store(self.app_path), self.core,
                                        checkpoints=self.checkpoints)
         self.client = TestClient(create_app(self.application, self.identities))

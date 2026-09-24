@@ -47,7 +47,7 @@ answers and exact supporting passages in the question fixtures together.
 
 ## Evaluation fixtures
 
-[questions.json](questions.json) contains 36 cases: 24 supported questions,
+[questions.json](../../tests/fixtures/aws_poc/questions.json) contains 36 cases: 24 supported questions,
 eight unsupported questions, and four attempts to request another owner's
 policy. Supported cases include exact passages and document IDs for citation
 review. All passages are on page 1 of the corresponding PDF. `pair_id` groups

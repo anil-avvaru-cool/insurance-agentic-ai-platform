@@ -6,7 +6,7 @@ from unittest import TestCase
 from unittest.mock import Mock, patch
 
 
-SPEC = importlib.util.spec_from_file_location("query_lambda", Path(__file__).parents[2] / "lambda" / "query.py")
+SPEC = importlib.util.spec_from_file_location("query_lambda", Path(__file__).parents[2] / "src" / "apps" / "query_lambda" / "query.py")
 query = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(query)
 

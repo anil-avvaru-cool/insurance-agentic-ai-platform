@@ -6,7 +6,7 @@ from pathlib import Path
 from ingestion.metadata import POLICIES, extract_metadata, validate_metadata
 from ingestion.pdf import parse_pdf
 
-ROOT = Path(__file__).resolve().parents[2] / 'policies' / 'aws_poc'
+ROOT = Path(__file__).resolve().parents[2] / 'data' / 'sample_insurance_policies'
 
 
 def prepare(root, check=False):

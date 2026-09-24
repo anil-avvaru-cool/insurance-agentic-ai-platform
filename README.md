@@ -2,7 +2,7 @@
 
 Start with the [Phase 1 AWS POC plan](docs/PHASE_1_AWS_POC_PLAN.md) and [Terraform setup](infra/aws/terraform/README.md) for the AWS deployment scope and sequence.
 
-The [AWS POC policy corpus](policies/aws_poc/README.md) contains four synthetic
+The [AWS POC policy corpus](data/sample_insurance_policies/README.md) contains four synthetic
 policy PDFs and expected coverage question answers for the AWS coverage POC.
 
 [Understand the codebase](docs/codebase_guide.md) for component responsibilities,
@@ -109,9 +109,11 @@ The tests use temporary databases and synthetic identities. They do not need
   leases, bounded retry/DLQ policy, telemetry, and PostgreSQL migration are pending.
 
 Source layout: `src/contracts`, `src/insurance_domain`, `src/workflows`,
-`src/apps/{api,web,worker,action_service}`, and `src/adapters/insurance`.
-Synthetic fixtures and urgency rules live in `policies`; they require claims
-owner approval before production use.
+`src/apps/{api,web,worker,action_service,query_lambda}`, and `src/adapters/insurance`.
+Sample insurance documents and metadata live in `data/sample_insurance_policies/`.
+Mock customer records and evaluation questions live in `tests/fixtures/`.
+Urgency rules, routing, and customer guidance live in `config/business_rules/`.
+Synthetic fixtures and business rules require claims owner approval before production use.
 
 ## Additional 1A verification
 

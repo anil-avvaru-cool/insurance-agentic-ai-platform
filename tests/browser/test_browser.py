@@ -20,9 +20,9 @@ from adapters.insurance.synthetic import SyntheticCore
 class BrowserTests(unittest.TestCase):
     def test_customer_receipt_and_employee_review(self):
         with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ,
-                AUTO_RULES_PATH='policies/auto_synthetic_v1.json', CATALOGS_PATH='policies/local_catalogs_v1.json'):
+                AUTO_RULES_PATH='config/business_rules/auto_synthetic_v1.json', CATALOGS_PATH='config/business_rules/local_catalogs_v1.json'):
             application = Application(Store(str(Path(folder) / 'app.db')),
-                                      SyntheticCore('policies/local_fixtures.json', str(Path(folder) / 'core.db')))
+                                      SyntheticCore('tests/fixtures/local_fixtures.json', str(Path(folder) / 'core.db')))
             app = create_app(application, {'customer': {'subject': 'customer_one', 'role': 'customer'},
                                           'employee': {'subject': 'employee_one', 'role': 'employee'}})
             with socket.socket() as sock:

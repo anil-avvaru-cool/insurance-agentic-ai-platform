@@ -314,9 +314,10 @@ insurance-agentic-ai-platform/
     agents/{service,intake,triage,cross_sell,underwriting}/
     adapters/{aws,azure,gcp}/
     tools/{service_mcp,claims_mcp,quote_mcp}/
-  policies/
+  config/business_rules/
+  data/sample_insurance_policies/
   evals/{synthetic_cases,security,quality}/
-  tests/{unit,contract,integration}/
+  tests/{fixtures,unit,contract,integration}/
   infra/
     bootstrap/{aws,azure,gcp}/
     modules/{aws,azure,gcp}/
