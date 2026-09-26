@@ -234,6 +234,7 @@ infra/aws/terraform/bootstrap/remote_override.tf
 
 # Offline ingestion operational reports (document hashes and AWS job details)
 ingestion_reports/
+online_rag_reports/
 
 tfout.txt
 infra/aws/terraform/bootstrap/bootstrap.s3.tfbackend

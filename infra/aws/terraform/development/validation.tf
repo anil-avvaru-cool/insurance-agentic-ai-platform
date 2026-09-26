@@ -8,7 +8,7 @@ resource "aws_iam_policy" "validation_runner" {
   name = "${local.name}_validation_runner"
   policy = jsonencode({ Version = "2012-10-17", Statement = [
     { Effect = "Allow", Action = ["bedrock:Retrieve"], Resource = [aws_bedrockagent_knowledge_base.service.arn] },
-    { Effect = "Allow", Action = ["bedrock:InvokeModel"], Resource = [local.rag_model_arn] },
+    { Effect = "Allow", Action = ["bedrock:InvokeModel"], Resource = [local.rag_answer_model_arn] },
     { Effect = "Allow", Action = ["logs:CreateLogStream", "logs:PutLogEvents"], Resource = ["${aws_cloudwatch_log_group.ingestion.arn}:*"] }
   ] })
 }

@@ -5,7 +5,8 @@ project_name = "insurance"
 environment = "development"
 owner = "insurance_platform_team"
 
-bedrock_rag_model_id = "amazon.nova-lite-v1:0"
+bedrock_rag_answer_model_id = "amazon.nova-lite-v1:0"
+bedrock_embedding_model_id = "amazon.titan-embed-text-v2:0"
 knowledge_bucket_versioning_enabled = false
 
 # Offline ingestion defaults; the CLI consumes Terraform's ingestion_environment output.
@@ -18,23 +19,11 @@ knowledge_ingestion_timeout_seconds = 900
 log_retention_days = 14
 # validation_runner_role_name = "insurance_validation_operator"
 
-# Optional managed identity provider. Apply this before enabling the API,
-# create users outside Terraform, then record their verified subjects below.
-create_cognito = false
-
-# Enable only after the query handler is implemented, packaged, and tested,
-# and offline retrieval/source/replacement/isolation checks have passed.
+# Operator-only REST API. No Cognito users or JWT tokens.
 enable_query_api = false
 index_validation_passed = false
+# query_operator_arn = "arn:aws:iam::000000000000:user/YOUR_OPERATOR"
 # query_lambda_zip = "/absolute/path/to/query.zip"
 # query_lambda_handler = "query.handler"
-# owner_by_subject = {
-#   "verified-subject-one" = "customer_one"
-#   "verified-subject-two" = "customer_two"
-# }
-# Existing issuer settings (omit these when create_cognito = true):
-# jwt_issuer = "https://your-issuer.example.com"
-# jwt_audience = ["your-query-client"]
-# jwt_scopes = ["policy:query"]
 query_timeout_seconds = 28
 query_max_tokens = 512

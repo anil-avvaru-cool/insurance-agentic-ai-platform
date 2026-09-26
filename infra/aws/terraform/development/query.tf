@@ -16,26 +16,13 @@ variable "query_lambda_handler" {
   type    = string
   default = "query.handler"
 }
-variable "jwt_issuer" {
-  type    = string
-  default = ""
-}
-variable "jwt_audience" {
-  type    = list(string)
-  default = []
-}
-variable "jwt_scopes" {
-  description = "Required access-token scopes for an external issuer. Cognito uses its API sign-in scope."
-  type        = list(string)
-  default     = []
-}
-variable "owner_by_subject" {
-  description = "Verified subject to approved corpus owner mapping, scoped to the single configured issuer. No passwords or tokens."
-  type        = map(string)
-  default     = {}
+variable "query_operator_arn" {
+  description = "Exact IAM principal allowed to invoke this POC (user, role, or root ARN; never an STS session ARN)."
+  type        = string
+  default     = ""
   validation {
-    condition     = alltrue([for subject, owner in var.owner_by_subject : trimspace(subject) != "" && contains(["customer_one", "customer_two"], owner)])
-    error_message = "Map nonempty verified subjects only to approved POC corpus owners."
+    condition     = var.query_operator_arn == "" || can(regex("^arn:aws:iam::[0-9]{12}:(root|user/[A-Za-z0-9+=,.@_/-]+|role/[A-Za-z0-9+=,.@_/-]+)$", var.query_operator_arn))
+    error_message = "Supply an exact IAM user, role or root ARN, without wildcards."
   }
 }
 variable "query_timeout_seconds" {
@@ -43,7 +30,7 @@ variable "query_timeout_seconds" {
   default = 28
   validation {
     condition     = var.query_timeout_seconds >= 5 && var.query_timeout_seconds <= 28 && floor(var.query_timeout_seconds) == var.query_timeout_seconds
-    error_message = "Use an integer Lambda timeout of 5..28 seconds, below the 30-second integration timeout."
+    error_message = "Use an integer Lambda timeout of 5..28 seconds, below the 29-second integration timeout."
   }
 }
 variable "query_max_tokens" {
@@ -55,11 +42,8 @@ variable "query_max_tokens" {
   }
 }
 locals {
-  query_count  = var.enable_query_api ? 1 : 0
-  query_name   = "${local.name}_query"
-  jwt_issuer   = var.create_cognito ? "https://${aws_cognito_user_pool.poc[0].endpoint}" : var.jwt_issuer
-  jwt_audience = var.create_cognito ? [aws_cognito_user_pool_client.poc[0].id] : var.jwt_audience
-  jwt_scopes   = var.create_cognito ? ["aws.cognito.signin.user.admin"] : var.jwt_scopes
+  query_count = var.enable_query_api ? 1 : 0
+  query_name  = "${local.name}_query"
 }
 resource "aws_iam_role" "query" {
   count = local.query_count
@@ -74,7 +58,7 @@ resource "aws_iam_role_policy" "query" {
   role  = aws_iam_role.query[0].id
   policy = jsonencode({ Version = "2012-10-17", Statement = [
     { Effect = "Allow", Action = ["bedrock:Retrieve"], Resource = [aws_bedrockagent_knowledge_base.service.arn] },
-    { Effect = "Allow", Action = ["bedrock:InvokeModel"], Resource = [local.rag_model_arn] },
+    { Effect = "Allow", Action = ["bedrock:InvokeModel"], Resource = [local.rag_answer_model_arn] },
     { Effect = "Allow", Action = ["logs:CreateLogStream", "logs:PutLogEvents"], Resource = ["${aws_cloudwatch_log_group.query[0].arn}:*"] }
   ] })
 }
@@ -91,14 +75,13 @@ resource "aws_lambda_function" "query" {
   timeout          = var.query_timeout_seconds
   environment {
     variables = {
-      BEDROCK_KNOWLEDGE_BASE_ID = aws_bedrockagent_knowledge_base.service.id
-      BEDROCK_RAG_MODEL_ID      = var.bedrock_rag_model_id
-      JWT_ISSUER                = local.jwt_issuer
-      OWNER_BY_SUBJECT_JSON     = jsonencode(var.owner_by_subject)
-      MODEL_MAX_TOKENS          = tostring(var.query_max_tokens)
-      MODEL_TEMPERATURE         = "0"
-      KNOWLEDGE_RESULT_COUNT    = "5"
-      QUERY_DEADLINE_SECONDS    = tostring(var.query_timeout_seconds - 2)
+      BEDROCK_KNOWLEDGE_BASE_ID   = aws_bedrockagent_knowledge_base.service.id
+      BEDROCK_RAG_ANSWER_MODEL_ID = var.bedrock_rag_answer_model_id
+      QUERY_OPERATOR_ARN          = var.query_operator_arn
+      MODEL_MAX_TOKENS            = tostring(var.query_max_tokens)
+      MODEL_TEMPERATURE           = "0"
+      KNOWLEDGE_RESULT_COUNT      = "5"
+      QUERY_DEADLINE_SECONDS      = tostring(var.query_timeout_seconds - 2)
     }
   }
   lifecycle {
@@ -111,65 +94,83 @@ resource "aws_lambda_function" "query" {
       error_message = "Build and supply a readable query Lambda ZIP before enabling the API."
     }
     precondition {
-      condition     = length(var.owner_by_subject) == 2 && length(toset(values(var.owner_by_subject))) == 2 && length(jsonencode(var.owner_by_subject)) < 2500
-      error_message = "Supply two verified subjects mapping to the two distinct POC owners within the Lambda environment size budget."
-    }
-    precondition {
-      condition     = var.create_cognito || (can(regex("^https://[^ ]+$", var.jwt_issuer)) && length(var.jwt_audience) > 0 && length(var.jwt_scopes) > 0 && alltrue([for v in concat(var.jwt_audience, var.jwt_scopes) : trimspace(v) != ""]))
-      error_message = "Configure an HTTPS JWT issuer, audience and access-token scopes, or enable Cognito."
+      condition     = startswith(var.query_operator_arn, "arn:aws:iam::${var.aws_account_id}:")
+      error_message = "Supply the approved operator's exact IAM ARN in this account."
     }
   }
   depends_on = [aws_iam_role_policy.query]
 }
-resource "aws_apigatewayv2_api" "query" {
-  count         = local.query_count
-  name          = local.query_name
-  protocol_type = "HTTP"
+resource "aws_api_gateway_rest_api" "query" {
+  count = local.query_count
+  name  = local.query_name
+  endpoint_configuration { types = ["REGIONAL"] }
 }
-resource "aws_apigatewayv2_authorizer" "query" {
-  count            = local.query_count
-  api_id           = aws_apigatewayv2_api.query[0].id
-  name             = "verified_owner"
-  authorizer_type  = "JWT"
-  identity_sources = ["$request.header.Authorization"]
-  jwt_configuration {
-    issuer   = local.jwt_issuer
-    audience = local.jwt_audience
-  }
-}
-resource "aws_apigatewayv2_integration" "query" {
-  count                  = local.query_count
-  api_id                 = aws_apigatewayv2_api.query[0].id
-  integration_type       = "AWS_PROXY"
-  integration_uri        = aws_lambda_function.query[0].invoke_arn
-  payload_format_version = "2.0"
-  timeout_milliseconds   = 30000
-}
-resource "aws_apigatewayv2_route" "query" {
-  count                = local.query_count
-  api_id               = aws_apigatewayv2_api.query[0].id
-  route_key            = "POST /query"
-  target               = "integrations/${aws_apigatewayv2_integration.query[0].id}"
-  authorization_type   = "JWT"
-  authorizer_id        = aws_apigatewayv2_authorizer.query[0].id
-  authorization_scopes = local.jwt_scopes
-}
-resource "aws_apigatewayv2_stage" "query" {
+resource "aws_api_gateway_rest_api_policy" "query" {
   count       = local.query_count
-  api_id      = aws_apigatewayv2_api.query[0].id
-  name        = "$default"
-  auto_deploy = true
-  default_route_settings {
-    detailed_metrics_enabled = true
-    throttling_burst_limit   = 5
-    throttling_rate_limit    = 2
-  }
+  rest_api_id = aws_api_gateway_rest_api.query[0].id
+  policy = jsonencode({ Version = "2012-10-17", Statement = [
+    { Effect   = "Allow", Principal = "*", Action = "execute-api:Invoke",
+      Resource = "${aws_api_gateway_rest_api.query[0].execution_arn}/poc/POST/query",
+    Condition = { ArnEquals = { "aws:PrincipalArn" = var.query_operator_arn } } },
+    { Effect   = "Deny", Principal = "*", Action = "execute-api:Invoke",
+      Resource = "${aws_api_gateway_rest_api.query[0].execution_arn}/*",
+    Condition = { ArnNotEquals = { "aws:PrincipalArn" = var.query_operator_arn } } }
+  ] })
+}
+resource "aws_api_gateway_resource" "query" {
+  count       = local.query_count
+  rest_api_id = aws_api_gateway_rest_api.query[0].id
+  parent_id   = aws_api_gateway_rest_api.query[0].root_resource_id
+  path_part   = "query"
+}
+resource "aws_api_gateway_method" "query" {
+  count         = local.query_count
+  rest_api_id   = aws_api_gateway_rest_api.query[0].id
+  resource_id   = aws_api_gateway_resource.query[0].id
+  http_method   = "POST"
+  authorization = "AWS_IAM"
+}
+resource "aws_api_gateway_integration" "query" {
+  count                   = local.query_count
+  rest_api_id             = aws_api_gateway_rest_api.query[0].id
+  resource_id             = aws_api_gateway_resource.query[0].id
+  http_method             = aws_api_gateway_method.query[0].http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.query[0].invoke_arn
+  timeout_milliseconds    = 29000
+}
+resource "aws_api_gateway_deployment" "query" {
+  count       = local.query_count
+  rest_api_id = aws_api_gateway_rest_api.query[0].id
+  triggers = { redeployment = sha1(jsonencode([
+    aws_api_gateway_resource.query[0], aws_api_gateway_method.query[0],
+    aws_api_gateway_integration.query[0], aws_api_gateway_rest_api_policy.query[0].policy
+  ])) }
+  lifecycle { create_before_destroy = true }
+}
+resource "aws_api_gateway_stage" "query" {
+  count         = local.query_count
+  rest_api_id   = aws_api_gateway_rest_api.query[0].id
+  deployment_id = aws_api_gateway_deployment.query[0].id
+  stage_name    = "poc"
   access_log_settings {
     destination_arn = aws_cloudwatch_log_group.api[0].arn
-    format = jsonencode({ request_id = "$context.requestId", status = "$context.status", route = "$context.routeKey",
+    format = jsonencode({ request_id = "$context.requestId", status = "$context.status", resource = "$context.resourcePath",
     latency_ms = "$context.responseLatency", integration_status = "$context.integrationStatus" })
   }
-  depends_on = [aws_cloudwatch_log_resource_policy.api, aws_lambda_permission.api]
+  depends_on = [aws_api_gateway_account.query, aws_lambda_permission.api]
+}
+resource "aws_api_gateway_method_settings" "query" {
+  count       = local.query_count
+  rest_api_id = aws_api_gateway_rest_api.query[0].id
+  stage_name  = aws_api_gateway_stage.query[0].stage_name
+  method_path = "*/*"
+  settings {
+    metrics_enabled        = true
+    throttling_burst_limit = 5
+    throttling_rate_limit  = 2
+  }
 }
 resource "aws_lambda_permission" "api" {
   count          = local.query_count
@@ -178,5 +179,5 @@ resource "aws_lambda_permission" "api" {
   function_name  = aws_lambda_function.query[0].function_name
   principal      = "apigateway.amazonaws.com"
   source_account = var.aws_account_id
-  source_arn     = "${aws_apigatewayv2_api.query[0].execution_arn}/$default/POST/query"
+  source_arn     = "${aws_api_gateway_rest_api.query[0].execution_arn}/poc/POST/query"
 }

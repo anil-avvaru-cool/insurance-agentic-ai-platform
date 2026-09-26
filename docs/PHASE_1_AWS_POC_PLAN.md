@@ -10,7 +10,7 @@ Deploy a small AWS proof of concept that answers policy coverage questions from 
 
 - Auto LOB: two customer-specific policy PDFs, one for each synthetic user.
 - Property LOB: two customer-specific policy PDFs, one for each synthetic user.
-- Basic owner isolation using verified authentication and mandatory owner-and-LOB retrieval filters.
+- Operator-only AWS IAM access with synthetic customer selection and mandatory owner-and-LOB retrieval filters. Customer login authorization is deferred.
 - Richer ACLs, delegated access, and policy sharing are future extensions.
 - Metadata extraction and validation.
 - Amazon Bedrock Knowledge Base for document ingestion, indexing, and retrieval.
@@ -100,11 +100,11 @@ After running the step 3 ingestion command:
 
 ### 5. Build the online query pipeline
 
-Flow: verified owner identity + question + LOB → owner-and-LOB filtered retrieval → Bedrock answer generation → answer with citations.
+Flow: verified AWS operator + synthetic customer ID + question + LOB → owner-and-LOB filtered retrieval → Bedrock answer generation → answer with citations.
 
-- Require a supported LOB and a verified owner identity. Apply both `owner_id` and LOB as mandatory retrieval filters before content reaches answer generation.
-- Reject requests with missing or unmapped owner identity; never fall back to unfiltered retrieval.
-- Keep answers and citations within the authenticated owner’s selected LOB, including when the question asks about another user’s policy.
+- Require the approved AWS operator, a supported LOB, and a synthetic `owner_id` of `customer_one` or `customer_two`. Apply both `owner_id` and LOB as mandatory retrieval filters before content reaches answer generation.
+- Reject requests with missing/unapproved AWS identity or invalid customer selection; never fall back to unfiltered retrieval.
+- Keep answers and citations within the selected synthetic customer’s selected LOB, including when the question asks about another user’s policy.
 - Generate answers grounded in retrieved policy content.
 - Return document citations with supported answers.
 - Return an insufficient-information response when the documents do not support an answer.
@@ -113,9 +113,9 @@ Flow: verified owner identity + question + LOB → owner-and-LOB filtered retrie
 
 Flow: API Gateway with authentication → Lambda → online query pipeline.
 
-- Accept a question and LOB.
-- Derive `owner_id` from verified authentication context through a trusted mapping; do not trust caller-supplied owner IDs as authorization.
-- Reject unauthenticated requests and identities without an authorized owner mapping. A local test harness may simulate identities; deployed API tests must use verified authentication.
+- Accept a question, LOB, and synthetic `owner_id`.
+- Authenticate existing AWS credentials with IAM/SigV4. Use a REST API resource policy to explicitly deny every principal except `query_operator_arn`. The approved operator may select either synthetic customer; this selection is not customer authorization.
+- Reject unsigned/invalid signatures and unapproved principals before Lambda. No Cognito users or JWT tokens are required. Customer identity isolation is outside this POC.
 - Return the answer, citations, and request ID.
 - Validate input and return clear errors.
 - Use appropriate API access controls and least-privilege AWS permissions.
@@ -127,7 +127,7 @@ Begin Terraform work alongside pipeline development. Offline infrastructure is a
 1. Bootstrap Terraform state storage.
 2. Provision the offline infrastructure: S3 document storage, knowledge base, S3 data source, vector index, required permissions, and ingestion observability, using step 4's indexing configuration. Reuse the existing development Terraform resources where appropriate.
 3. Run the step 3 command to upload documents and metadata and complete ingestion; perform step 4's retrieval and owner-and-LOB filter validation.
-4. Provision API authentication, trusted owner identity mapping, online permissions, and query observability; package and deploy the Lambda application and API from steps 5 and 6. Enable online queries only after indexing validation passes.
+4. Provision operator-only IAM API authentication, synthetic customer selection, online permissions, and query observability; package and deploy the Lambda application and API from steps 5 and 6. Enable online queries only after indexing validation passes.
 5. Run smoke tests against the authenticated deployed API, followed by step 9's end-to-end checks.
 
 Keep environment-specific configuration outside application code.
@@ -170,8 +170,8 @@ Document a repeatable teardown procedure for the POC resources, identifying any 
 - Verify answers and citations against the expected policy passages.
 - For each user, verify Auto queries retrieve only their Auto content and Property queries retrieve only their Property content.
 - Ask the same deductible or limit question as both users and verify each answer and citation matches that user’s policy.
-- Attempt to request another user’s policy through question text and caller-supplied owner IDs; verify no other owner’s content appears in retrieval results, answers, or citations.
-- Verify missing or invalid authentication and unmapped identities are rejected before retrieval.
+- Attempt to request another customer’s policy through question text; verify results remain within the explicitly selected `owner_id`. Selecting the other valid `owner_id` intentionally switches the synthetic customer. Reject missing or invalid customer IDs.
+- Verify missing or invalid signatures and unapproved AWS principals are rejected before retrieval.
 - Check unsupported questions return insufficient information.
 - Check invalid API inputs produce clear errors.
 - Introduce a controlled failure to verify logs and metrics; verify ingestion failures also produce an unsuccessful CLI exit and a reviewable run report.
@@ -181,8 +181,8 @@ Document a repeatable teardown procedure for the POC resources, identifying any 
 - All four PDFs and their validated metadata are successfully ingested, indexed, and verified through retrieval checks.
 - One deployed API answers the predefined test set with accurate document citations.
 - Mandatory owner-and-LOB filtering prevents retrieval from another owner or LOB.
-- The deployed API derives owner identity from verified authentication and rejects missing, invalid, or unmapped identities.
-- Isolation tests confirm that answers and citations contain only the authenticated owner’s selected LOB content.
+- The deployed API permits only the configured AWS operator and rejects missing/invalid signatures and other principals. It validates the explicitly selected synthetic customer.
+- Isolation tests confirm that answers and citations contain only the selected synthetic customer’s selected LOB content.
 - Unsupported questions produce an insufficient-information response.
 - Terraform supports bootstrap, infrastructure provisioning, and API/Lambda deployment.
 - CloudWatch dashboards show ingestion and query activity.

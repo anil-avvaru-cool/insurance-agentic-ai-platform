@@ -1,8 +1,8 @@
 # Phase 1 AWS resource inventory and deployment order
 
-This inventory implements the scope in [PHASE_1_AWS_POC_PLAN.md](PHASE_1_AWS_POC_PLAN.md): four synthetic policy PDFs, authenticated owner-and-LOB isolation, grounded answers with citations, a Lambda query API, repeatable ingestion, and operational monitoring.
+This inventory implements the scope in [PHASE_1_AWS_POC_PLAN.md](PHASE_1_AWS_POC_PLAN.md): four synthetic policy PDFs, operator-authenticated customer-and-LOB filtering, grounded answers with citations, a Lambda query API, repeatable ingestion, and operational monitoring.
 
-Status reflects the Phase 1 Terraform and repository workload implementations. **Implemented means code exists, not that AWS acceptance has passed.** **Defined means present in Terraform, not verified deployed.** The earlier 13-resource plan is superseded: the default development configuration defines 22 resources; enabling the query API adds 19, optional Cognito adds two, and each operator attachment adds one. Bootstrap remains separate. These are configuration counts, not an account-specific plan. Workload files and tests are inventoried in section 5. Ingestion CloudWatch emission and live acceptance checks remain outstanding; deployment evidence must establish that the tested Lambda artifact is deployed.
+Status reflects the Phase 1 Terraform and repository workload implementations. **Implemented means code exists, not that AWS acceptance has passed.** **Defined means present in Terraform, not verified deployed.** The earlier 13-resource plan is superseded: the default development configuration defines 22 resources; enabling the query API adds 24, and each operator attachment adds one. Bootstrap remains separate. These are configuration counts, not an account-specific plan. Workload files and tests are inventoried in section 5. Ingestion CloudWatch emission and live acceptance checks remain outstanding; deployment evidence must establish that the tested Lambda artifact is deployed.
 
 ## Categories
 
@@ -17,7 +17,7 @@ A resource count includes IAM policies, bucket settings, and associations, not j
 
 ## Architecture: two separate paths
 
-Phase 1 has an **offline path** that prepares and verifies the searchable corpus and an **online path** that answers authenticated customer requests. The online path must not be enabled until the offline validation gate passes. Bootstrap and monitoring support both paths but are not request-processing stages.
+Phase 1 has an **offline path** that prepares and verifies the searchable corpus and an **online path** that answers operator-authenticated requests for selected synthetic customers. The online path must not be enabled until the offline validation gate passes. Bootstrap and monitoring support both paths but are not request-processing stages.
 
 ### Offline: publish, ingest, and validate
 
@@ -51,15 +51,15 @@ sequenceDiagram
 sequenceDiagram
     autonumber
     participant Customer
-    participant API as API Gateway + JWT authorizer
+    participant API as API Gateway + IAM policy
     participant Lambda as Query Lambda
     participant KB as Bedrock Knowledge Base
     participant Model as Bedrock answer model
     participant Logs as CloudWatch
     Customer->>API: POST /query with token, question, and LOB
-    API->>API: Validate JWT issuer, audience, and scope
-    API->>Lambda: Invoke with verified JWT claims
-    Lambda->>Lambda: Map subject to owner and validate question and LOB
+    API->>API: Validate AWS signature and exact operator principal
+    API->>Lambda: Invoke with verified IAM context
+    Lambda->>Lambda: Validate selected synthetic customer, question and LOB
     Lambda->>KB: Retrieve with mandatory owner + LOB filters
     KB-->>Lambda: Passages, metadata, and source references
     alt Evidence supports an answer
@@ -140,34 +140,37 @@ The lock is an S3 object managed by the ingestion application, not a new Terrafo
 
 ## 3. Online path: authenticated query resources
 
-**Order: after the offline infrastructure; enable query traffic only after retrieval and isolation validation passes.** Defined in `query.tf`, using a ZIP-packaged Lambda and an API Gateway HTTP API with JWT authentication. Resources use `[0]` when `enable_query_api = true`; deployment requires a readable artifact, two owner mappings, identity configuration, and `index_validation_passed = true`.
+**Order: after the offline infrastructure; enable query traffic only after retrieval and isolation validation passes.** Defined in `query.tf`, using a ZIP-packaged Lambda and an API Gateway REST API with operator-only IAM authentication. Resources use `[0]` when `enable_query_api = true`; deployment requires a readable artifact, an exact operator IAM ARN, and `index_validation_passed = true`.
 
 | Terraform resource | Category | Status | Purpose and dependency |
 |---|---|---|---|
 | `aws_iam_role.query` | Must | Defined | Lambda execution identity with a Lambda service trust policy. |
 | `aws_iam_role_policy.query` | Must | Defined | Grants knowledge-base retrieval, answer-model invocation, and scoped logging/telemetry permissions. |
 | `aws_lambda_function.query` | Must | Infrastructure and handler implemented; deployment unverified | Hosts the online orchestrator in `src/apps/query_lambda/query.py`; package with `scripts/build_query_lambda.sh`. Live authentication, grounding, isolation, and telemetry acceptance remain required. |
-| `aws_apigatewayv2_api.query` | Must | Defined | Defines the HTTP query API. |
-| `aws_apigatewayv2_authorizer.query` | Must for JWT design | Defined | Validates tokens from the selected issuer and audience before query execution. |
-| `aws_apigatewayv2_integration.query` | Must | Defined | Connects the API to Lambda. |
-| `aws_apigatewayv2_route.query` | Must | Defined | Defines the authenticated query route, for example `POST /query`. |
-| `aws_apigatewayv2_stage.query` | Must | Defined | Publishes the API stage and configures access logging and throttling. |
-| `aws_lambda_permission.api` | Must | Defined | Allows the intended API Gateway source to invoke the query function. |
+| `aws_api_gateway_rest_api.query` | Must | Defined | Regional REST query API. |
+| `aws_api_gateway_rest_api_policy.query` | Must | Defined | Allows the exact operator and explicitly denies every other principal. |
+| `aws_api_gateway_resource.query` | Must | Defined | `/query` resource. |
+| `aws_api_gateway_method.query` | Must | Defined | `POST` with `AWS_IAM` authentication. |
+| `aws_api_gateway_integration.query` | Must | Defined | REST Lambda proxy integration. |
+| `aws_api_gateway_deployment.query` | Must | Defined | Redeploys when method, integration or policy changes. |
+| `aws_api_gateway_stage.query` | Must | Defined | Publishes `poc` and enables access logs. |
+| `aws_api_gateway_method_settings.query` | Must | Defined | Throttling and metrics. |
+| `aws_lambda_permission.api` | Must | Defined | Allows only the intended API stage/method to invoke Lambda through API Gateway. |
 
-This is **nine defined resources**, excluding identity-provider resources and monitoring. If stage auto-deployment is selected, a separate API deployment resource is not planned. Revisit the inventory if the API or authentication design changes.
+This is **12 defined resources**, excluding monitoring.
 
-### Identity and owner mapping
+### Operator identity and synthetic customer selection
 
-| Resource or capability | Category | Status | Purpose |
-|---|---|---|---|
-| Existing JWT identity provider | Must capability; reuse preferred | Configurable | Supplies verified identities for the two synthetic users. |
-| `aws_cognito_user_pool.poc` | Conditional | Defined; opt-in | Supplies an identity provider when no suitable existing provider is available. |
-| `aws_cognito_user_pool_client.poc` | Conditional | Defined; opt-in | Configures the chosen client authentication flow and token audience. |
-| Cognito domain | Conditional | Not needed for selected flow | Optional Cognito uses SRP sign-in and refresh tokens without a hosted UI. |
-| Two synthetic test identities | Must capability | Provision through selected provider | Enable deployed tests for both owners. Avoid storing user passwords in Terraform configuration or state. |
-| Trusted identity-to-owner mapping | Must | Configuration and handler implemented; live verification pending | The handler checks the issuer and maps the verified subject to an approved `owner_id` before retrieval. For two users, no database is required. |
+`query_operator_arn` selects one exact IAM principal in the account. Requests use
+existing AWS credentials and SigV4. No Cognito, JWT provider, user passwords or
+subject mappings are needed. All other principals are explicitly denied at the
+API, including identities with broad same-account invocation permissions. Role
+access includes everyone who can assume the selected role. Administrators who
+can change the infrastructure can change these controls.
 
-Authentication is not sufficient on its own. Reject valid but unmapped identities. Never accept a caller-supplied owner ID as authorization. Every retrieval must include both the mapped owner and the validated LOB before evidence reaches answer generation.
+The approved operator supplies `owner_id` as `customer_one` or `customer_two`.
+Every retrieval includes both the selected customer and validated LOB. This tests
+customer document filtering; customer login isolation is outside Phase 1 scope.
 
 ## 4. Observability: resources defined alongside each pipeline
 
@@ -178,7 +181,7 @@ Authentication is not sufficient on its own. Reject valid but unmapped identitie
 | `aws_cloudwatch_log_group.ingestion` | Must | Defined | Receives structured ingestion and index-validation events with explicit retention. |
 | `aws_cloudwatch_log_group.query` | Must | Defined | Receives Lambda logs correlated by request ID, with explicit retention. |
 | `aws_cloudwatch_log_group.api` | Must | Defined | Receives API access logs, including requests rejected before Lambda, with explicit retention. |
-| API access-log delivery permissions | Must capability | Defined; verify live delivery | `aws_cloudwatch_log_resource_policy.api[0]` scopes delivery to the API group. External deployment identity also needs CloudWatch log-delivery setup permissions. |
+| API access-log delivery permissions | Must capability | Defined; verify live delivery | `aws_iam_role.api_logs`, `aws_iam_role_policy.api_logs`, and `aws_api_gateway_account.query` configure the regional API Gateway logging role. Reconcile any existing account setting before applying. |
 | `aws_cloudwatch_log_metric_filter` resources | Must capability | Defined; live delivery unverified | Six ingestion/index filters, six query filters and one API authentication filter. Query handler emits structured events; ingestion/index CloudWatch publishing remains pending. Verify events match the metric-filter contract; no duplicate direct metric publishing. |
 | `aws_cloudwatch_dashboard.poc` | Must | Defined | Shows ingestion and query activity, errors, latency, throttling, and application signals. |
 
@@ -198,7 +201,7 @@ Application and CLI code must emit these events; provisioning log groups or a da
 |---|---|---|
 | Four synthetic PDFs and four metadata sidecars | Must | Provide the complete reviewed POC corpus and filterable metadata. |
 | Embedding model selection | Must | Current configuration uses Titan Text Embeddings V2 at 1,024 dimensions; model and index dimensions must match. |
-| Answer model selection/access | Must | RAG answer generation uses `bedrock_rag_model_id` (default `amazon.nova-lite-v1:0`), passed to Lambda as `BEDROCK_RAG_MODEL_ID`; verify account/region access before deployed tests. |
+| Answer model selection/access | Must | RAG answer generation uses `bedrock_rag_answer_model_id` (default `amazon.nova-lite-v1:0`), passed to Lambda as `BEDROCK_RAG_ANSWER_MODEL_ID`; verify account/region access before deployed tests. |
 | Lambda ZIP artifact and dependency packaging | Must | Deploy the query application without an ECR/container dependency. |
 | Region, bucket/prefix, knowledge-base IDs, timeouts | Must | Keep environment configuration outside application code. |
 | Evaluation fixtures and run reports | Must | Establish correct answers, source citations, isolation, and unsupported-question behavior. |
@@ -217,10 +220,10 @@ These resources implement the Phase 1 workloads and do **not** add to the Terraf
 | [prepare_poc_metadata.py](../scripts/prepare_poc_metadata.py) | 2 | Implemented | Validates the complete corpus before writing sidecars; `--check` verifies current sidecars without writing. |
 | [pdf.py](../src/ingestion/pdf.py), [metadata.py](../src/ingestion/metadata.py), [corpus.py](../src/ingestion/corpus.py) | 2 | Implemented | Separate PDF parsing, deterministic labeled-field extraction, owner/policy/LOB validation, and corpus/sidecar checks. |
 | [ingest_poc.py](../scripts/ingest_poc.py) | 3 | Implemented; AWS run evidence required | Operator CLI reads environment settings or applied Terraform `ingestion_environment`, validates and uploads the eight approved objects, starts ingestion, and writes a JSON report. Requires AWS credentials and offline resources; no API deployment dependency. |
-| [offline.py](../src/ingestion/offline.py) and [jobs.py](../src/ingestion/jobs.py) | 3–4 | Implemented | Snapshot validation, live configuration checks, conditional S3 locking, stable policy keys for replacement, upload sequencing, job polling, document-failure checks, and timeout recovery. Retrieval after replacement still needs verification. |
+| [offline.py](../src/ingestion/offline.py) and [jobs.py](../src/ingestion/jobs.py) | 3–4 | Implemented | Validation of a local copy of policy PDFs and metadata before upload, live configuration checks, conditional S3 locking, stable policy keys for replacement, upload sequencing, job polling, document-failure checks, and timeout recovery. Retrieval after replacement still needs verification. |
 | `ingestion_reports/<timestamp>_<unique_id>.json` | 3, 8 | Generated per CLI run; gitignored | Records hashes, uploads, job ID/status/statistics, duration, failures, and lock state. `--report PATH` selects another location. Local reports exist independently of CloudWatch delivery. |
 | [bedrock_smoke.py](../scripts/bedrock_smoke.py) | Supporting diagnostics | Existing utility; not the Phase 1 acceptance runner | Provides model/retrieval/ingestion diagnostics. Its `ingest` operation bypasses POC locking; use `ingest_poc.py` for the managed POC data source. Generic retrieval does not establish owner-and-LOB isolation. |
-| [query.py](../src/apps/query_lambda/query.py) | 5–6, 8 | Implemented; deployed verification pending | `query.handler` consumes API Gateway JWT claims, enforces trusted owner mapping and owner/LOB retrieval filters, calls Bedrock Converse, assembles citations, returns controlled insufficient-information responses, and prints structured query events. Requires Terraform-provided model, KB, issuer, and mapping configuration. |
+| [query.py](../src/apps/query_lambda/query.py) | 5–6, 8 | Implemented; deployed verification pending | `query.handler` consumes API Gateway IAM context, validates the operator and selected customer and owner/LOB retrieval filters, calls Bedrock Converse, assembles citations, returns controlled insufficient-information responses, and prints structured query events. Requires Terraform-provided model, KB, and operator ARN configuration. |
 | [build_query_lambda.sh](../scripts/build_query_lambda.sh) → `build/lambda/query.zip` | 7 | Packaging implemented | Compiles and ZIPs the handler as `query.py`; uses the Lambda runtime's Boto3/Botocore rather than bundling dependencies. Build and test the artifact before enabling the API. |
 | [questions.json](../tests/fixtures/aws_poc/questions.json) | 1, 4, 9 | Present; live evaluation pending | Expected answers, allowed document IDs, supporting passages, paired owner cases, and unsupported questions. Fixtures alone are not an executed evaluation. |
 | Ingestion/index CloudWatch publisher | 8 | Pending | Publish the documented ingestion and validation events to the provisioned log group; verify failure metrics and dashboard visibility. The current ingestion CLI writes a local report only. |
@@ -231,11 +234,11 @@ These resources implement the Phase 1 workloads and do **not** add to the Terraf
 |---|---|---|
 | [test_poc_metadata.py](../tests/unit/test_poc_metadata.py) | Local PDFs and sidecars | Checks extraction, required labels/values, owner assignments, exact corpus inventory, stale sidecars, and validation before writes. Manual PDF review remains required. |
 | [test_offline_ingestion.py](../tests/unit/test_offline_ingestion.py) | Local workload orchestration with AWS mocks | Checks approved uploads, configuration mismatches, concurrent runs, partial failures, job/document failures, timeouts, uncertain responses, reruns, revised document IDs, and unknown remote inventory. Does not establish live indexing or removal of obsolete content. |
-| [test_query_lambda.py](../tests/unit/test_query_lambda.py) | Handler with simulated authorizer claims and mocked Bedrock | Checks issuer/unmapped-identity rejection, owner-and-LOB retrieval filters, caller owner override resistance, invalid inputs, citation handling, and insufficient evidence. Does not exercise JWT verification at API Gateway or model answer accuracy. |
+| [test_query_lambda.py](../tests/unit/test_query_lambda.py) | Handler with simulated IAM context and mocked Bedrock | Checks missing/unapproved-identity rejection, owner-and-LOB retrieval filters, synthetic customer selection, invalid inputs, citation handling, and insufficient evidence. Does not exercise IAM verification at API Gateway or model answer accuracy. |
 | [test_journey.py](../tests/integration/test_journey.py) | Local FastAPI `TestClient`, temporary SQLite stores, synthetic core and identities | Existing claims-intake/service integration regression suite, including ownership and restart behavior. It does not exercise the Phase 1 Lambda/API Gateway/Knowledge Base path and cannot satisfy Phase 1 deployed acceptance. |
 | [phase1.tftest.hcl](../infra/aws/terraform/development/tests/phase1.tftest.hcl) and [foundation.tftest.hcl](../infra/aws/terraform/development/tests/foundation.tftest.hcl) | Terraform with mocked providers | Validate infrastructure configuration and deployment gates; do not prove AWS resource readiness or workload behavior. |
 | Phase 1 live retrieval and replacement checks | AWS; required, dedicated runner pending | Retrieve all four documents with correct sources and owner/LOB filters, then revise and reingest a policy and verify new content is returned and superseded content is absent. Preserve a reviewable validation report before enabling queries. |
-| Phase 1 authenticated API integration/evaluation suite | Deployed AWS API; required, dedicated runner pending | Run question fixtures as both verified users; assess answer/citation correctness, cross-owner attempts, unsupported questions, missing/invalid/unmapped authentication, invalid input, and controlled failures. Capture request IDs and CloudWatch evidence. |
+| [test_online_rag.py](../scripts/test_online_rag.py) | Deployed AWS API; runner implemented, live execution pending | Runs fixtures for both customers with SigV4 signing, citation/amount checks, unsupported cases, missing/invalid signatures, and invalid customer/question/LOB input. Another-principal check requires separate credentials. Saves responses and request IDs. Human answer/citation review, controlled backend failures and CloudWatch evidence remain required. See [online RAG testing](ONLINE_RAG_TESTING.md). |
 
 Run these commands from the repository root with dependencies installed using `uv sync --locked`:
 
@@ -273,7 +276,7 @@ Terraform resolves resource dependencies within a root. The order below describe
 | 2 | Deploy the offline foundation and operator permissions | Bootstrap | Correct bucket prefix, compatible index/model, and usable operator access. |
 | 3 | Add ingestion logs and failure metrics | Offline foundation | CLI telemetry reaches CloudWatch; failures produce an unsuccessful exit and a reviewable run report. |
 | 4 | Run ingestion and index validation | Reviewed corpus, operator access, monitoring | All four documents indexed; owner/LOB isolation, source references, and document replacement pass. |
-| 5 | Deploy authentication, owner mapping, Lambda/API, and query observability | Identity choice and retrieval validation | Unauthenticated/unmapped users rejected; mandatory filters enforced; logs and metrics visible. |
+| 5 | Deploy IAM authentication, customer selection, Lambda/API, and query observability | Identity choice and retrieval validation | Unsigned/invalid requests and unapproved principals rejected; mandatory filters enforced; logs and metrics visible. |
 | 6 | Run authenticated end-to-end and controlled-failure tests | Online deployment | Expected answers/citations, different-owner answers, unsupported cases, and failure visibility in logs and metrics pass. |
 | 7 | Record repeatable deployment/test instructions | Passing acceptance checks | Reviewable reports, configuration instructions, and teardown procedure available. |
 
@@ -286,13 +289,13 @@ Ingestion and API code can be developed in parallel with infrastructure. Do not 
 | Bootstrap | 6 defined resources, separate state/root. |
 | Default development configuration | 22 defined resources: original 13 plus validation policy, ingestion log group, six filters and dashboard. |
 | Optional operator attachments | +1 each for ingestion and validation roles when configured. |
-| Query API/Lambda/JWT authorizer | +9 when enabled. |
-| Additional online monitoring | +10 when enabled: two log groups, one delivery policy and seven metric filters. |
-| Identity provider | +0 for an existing provider or +2 for optional Cognito pool/client. Users/passwords are provisioned outside Terraform. |
+| Query REST API/Lambda/IAM policy | +12 when enabled. |
+| Additional online monitoring | +12 when enabled: two log groups, logging role/policy/account setting and seven metric filters. |
+| Identity provider | No new resources; uses existing AWS credentials. |
 
-The enabled development subtotal is **41 resources** (22 + 9 + 10), or **43 with Cognito**, before optional operator attachments. These are configuration counts, **not a generated final Terraform plan**.
+The enabled development subtotal is **46 resources** (22 + 12 + 12), before optional operator attachments. These are configuration counts, **not a generated final Terraform plan**.
 
-Implemented defaults: existing JWT provider or optional Cognito SRP; 14-day retention; log-derived custom metrics; 28-second Lambda timeout within a 30-second API integration timeout; 512 output tokens; API rate 2/second and burst 5. The operator must supply actual verified subjects and the tested Lambda artifact, attest offline validation, and verify model latency and log delivery. See the Terraform runbook for the handler and telemetry contracts. Generate a fresh account-specific plan before applying.
+Implemented defaults: operator-only IAM signatures; 14-day retention; log-derived custom metrics; 28-second Lambda timeout within a 29-second API integration timeout; 512 output tokens; API rate 2/second and burst 5. The operator must supply the exact operator ARN and the tested Lambda artifact, attest offline validation, and verify model latency and log delivery. See the Terraform runbook for the handler and telemetry contracts. Generate a fresh account-specific plan before applying.
 
 ## Related files
 

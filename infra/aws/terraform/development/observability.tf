@@ -39,17 +39,26 @@ resource "aws_cloudwatch_log_group" "api" {
   name              = "/aws/vendedlogs/${local.name}/api"
   retention_in_days = var.log_retention_days
 }
-resource "aws_cloudwatch_log_resource_policy" "api" {
-  count       = local.query_count
-  policy_name = "${local.name}_api_logs"
-  policy_document = jsonencode({ Version = "2012-10-17", Statement = [{
-    Effect = "Allow", Principal = { Service = "delivery.logs.amazonaws.com" },
-    Action = ["logs:CreateLogStream", "logs:PutLogEvents"], Resource = "${aws_cloudwatch_log_group.api[0].arn}:*",
-    Condition = {
-      StringEquals = { "aws:SourceAccount" = var.aws_account_id },
-      ArnLike      = { "aws:SourceArn" = "arn:aws:logs:${var.aws_region}:${var.aws_account_id}:*" }
-    }
+# API Gateway's CloudWatch role is a regional account setting; import if already managed.
+resource "aws_iam_role" "api_logs" {
+  count = local.query_count
+  name  = "${local.name}_api_logs"
+  assume_role_policy = jsonencode({ Version = "2012-10-17", Statement = [{
+    Effect = "Allow", Action = "sts:AssumeRole", Principal = { Service = "apigateway.amazonaws.com" }
   }] })
+}
+resource "aws_iam_role_policy" "api_logs" {
+  count = local.query_count
+  role  = aws_iam_role.api_logs[0].id
+  policy = jsonencode({ Version = "2012-10-17", Statement = [
+    { Effect = "Allow", Action = ["logs:DescribeLogGroups"], Resource = "*" },
+    { Effect = "Allow", Action = ["logs:CreateLogStream", "logs:DescribeLogStreams", "logs:PutLogEvents", "logs:GetLogEvents", "logs:FilterLogEvents"], Resource = "${aws_cloudwatch_log_group.api[0].arn}:*" }
+  ] })
+}
+resource "aws_api_gateway_account" "query" {
+  count               = local.query_count
+  cloudwatch_role_arn = aws_iam_role.api_logs[0].arn
+  depends_on          = [aws_iam_role_policy.api_logs]
 }
 resource "aws_cloudwatch_log_metric_filter" "ingestion" {
   for_each       = local.ingestion_metrics
@@ -97,7 +106,7 @@ resource "aws_cloudwatch_dashboard" "poc" {
     ], var.enable_query_api ? [
     { type = "metric", x = 12, y = 0, width = 12, height = 6, properties = {
       title   = "API requests and errors", region = var.aws_region, period = 60, stat = "Sum",
-      metrics = [for name in ["Count", "4xx", "5xx"] : ["AWS/ApiGateway", name, "ApiId", aws_apigatewayv2_api.query[0].id]]
+      metrics = [for name in ["Count", "4XXError", "5XXError"] : ["AWS/ApiGateway", name, "ApiName", local.query_name, "Stage", "poc"]]
     } },
     { type = "metric", x = 0, y = 6, width = 12, height = 6, properties = {
       title   = "Lambda requests, errors and throttles", region = var.aws_region, period = 60, stat = "Sum",
@@ -105,7 +114,7 @@ resource "aws_cloudwatch_dashboard" "poc" {
     } },
     { type = "metric", x = 12, y = 6, width = 12, height = 6, properties = {
       title   = "API and Lambda latency (ms)", region = var.aws_region, period = 60, stat = "p95",
-      metrics = [["AWS/ApiGateway", "Latency", "ApiId", aws_apigatewayv2_api.query[0].id], ["AWS/Lambda", "Duration", "FunctionName", local.query_name]]
+      metrics = [["AWS/ApiGateway", "Latency", "ApiName", local.query_name, "Stage", "poc"], ["AWS/Lambda", "Duration", "FunctionName", local.query_name]]
     } },
     { type = "metric", x = 0, y = 12, width = 24, height = 6, properties = {
       title   = "Query and authentication signals", region = var.aws_region, period = 60, stat = "Sum",

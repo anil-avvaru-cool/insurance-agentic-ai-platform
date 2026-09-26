@@ -1,11 +1,16 @@
-variable "bedrock_rag_model_id" {
+variable "bedrock_rag_answer_model_id" {
   description = "RAG answer-generation regional on-demand Converse model ID; inference profiles require different IAM configuration."
   type        = string
   default     = "amazon.nova-lite-v1:0"
   validation {
-    condition     = can(regex("^[a-z0-9]+\\.[A-Za-z0-9.:-]+$", var.bedrock_rag_model_id)) && !can(regex("^(us|eu|apac|global)\\.", var.bedrock_rag_model_id))
+    condition     = can(regex("^[a-z0-9]+\\.[A-Za-z0-9.:-]+$", var.bedrock_rag_answer_model_id)) && !can(regex("^(us|eu|apac|global)\\.", var.bedrock_rag_answer_model_id))
     error_message = "Use a regional foundation model ID, not an inference profile or ARN."
   }
+}
+variable "bedrock_embedding_model_id" {
+  description = "Bedrock embedding foundation model ID; must support the configured 1024-dimensional float32 vectors."
+  type        = string
+  default     = "amazon.titan-embed-text-v2:0"
 }
 variable "knowledge_bucket_versioning_enabled" {
   description = "Enable versioning for knowledge documents. False suspends versioning without deleting existing versions."
@@ -13,10 +18,9 @@ variable "knowledge_bucket_versioning_enabled" {
   default     = false
 }
 locals {
-  embedding_model_id  = "amazon.titan-embed-text-v2:0"
-  embedding_dimension = 1024
-  rag_model_arn       = "arn:aws:bedrock:${var.aws_region}::foundation-model/${var.bedrock_rag_model_id}"
-  embedding_model_arn = "arn:aws:bedrock:${var.aws_region}::foundation-model/${local.embedding_model_id}"
+  embedding_dimension  = 1024
+  rag_answer_model_arn = "arn:aws:bedrock:${var.aws_region}::foundation-model/${var.bedrock_rag_answer_model_id}"
+  embedding_model_arn  = "arn:aws:bedrock:${var.aws_region}::foundation-model/${var.bedrock_embedding_model_id}"
 }
 resource "aws_s3_bucket" "knowledge" {
   bucket        = "${local.aws_name}${var.aws_account_id}knowledge"

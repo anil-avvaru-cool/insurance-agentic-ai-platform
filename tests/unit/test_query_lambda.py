@@ -13,9 +13,8 @@ SPEC.loader.exec_module(query)
 
 ENV = {
     "BEDROCK_KNOWLEDGE_BASE_ID": "kb-1",
-    "BEDROCK_RAG_MODEL_ID": "amazon.nova-lite-v1:0",
-    "JWT_ISSUER": "https://issuer.example",
-    "OWNER_BY_SUBJECT_JSON": '{"subject-1":"customer_one","subject-2":"customer_two"}',
+    "BEDROCK_RAG_ANSWER_MODEL_ID": "amazon.nova-lite-v1:0",
+    "QUERY_OPERATOR_ARN": "arn:aws:iam::123456789012:user/operator",
     "KNOWLEDGE_RESULT_COUNT": "5",
     "MODEL_MAX_TOKENS": "512",
     "MODEL_TEMPERATURE": "0",
@@ -30,10 +29,10 @@ class Context:
         return 28000
 
 
-def event(body=None, subject="subject-1", issuer="https://issuer.example"):
+def event(body=None, arn="arn:aws:iam::123456789012:user/operator"):
     return {
-        "requestContext": {"requestId": "api-id", "authorizer": {"jwt": {"claims": {"iss": issuer, "sub": subject}}}},
-        "body": json.dumps(body or {"question": "What is my deductible?", "lob": "auto"}),
+        "requestContext": {"requestId": "api-id", "identity": {"userArn": arn}},
+        "body": json.dumps(body if body is not None else {"question": "What is my deductible?", "lob": "auto", "owner_id": "customer_one"}),
     }
 
 
@@ -42,16 +41,45 @@ class QueryLambdaTests(TestCase):
         with patch.dict(os.environ, ENV, clear=True):
             return query.handler(request, Context(), agent_client=agent or Mock(), model_client=model or Mock())
 
-    def test_rejects_unmapped_identity_before_aws_calls(self):
+    def test_rejects_other_identity_before_aws_calls(self):
         agent, model = Mock(), Mock()
-        response = self.invoke(event(subject="unknown"), agent, model)
+        response = self.invoke(event(arn="arn:aws:iam::123456789012:user/other"), agent, model)
         self.assertEqual(response["statusCode"], 403)
         agent.retrieve.assert_not_called()
         model.converse.assert_not_called()
 
-    def test_rejects_wrong_issuer(self):
-        response = self.invoke(event(issuer="https://attacker.example"))
-        self.assertEqual(response["statusCode"], 401)
+    def test_rejects_missing_identity_and_forged_header(self):
+        request = event(arn=None)
+        request["headers"] = {"userArn": ENV["QUERY_OPERATOR_ARN"]}
+        response = self.invoke(request)
+        self.assertEqual(response["statusCode"], 403)
+
+    def test_role_sessions_match_only_approved_role(self):
+        config = {"operator_arn": "arn:aws:iam::123456789012:role/team/operator"}
+        query._authorize(event(arn="arn:aws:sts::123456789012:assumed-role/operator/session"), config)
+        for arn in ("arn:aws:sts::999999999999:assumed-role/operator/session",
+                    "arn:aws:sts::123456789012:assumed-role/other/session"):
+            with self.assertRaises(query.RequestError):
+                query._authorize(event(arn=arn), config)
+
+    def test_invalid_owner_skips_bedrock(self):
+        for owner in (None, "unknown", [], "customer_one "):
+            agent, model = Mock(), Mock()
+            response = self.invoke(event({"question": "Deductible?", "lob": "auto", "owner_id": owner}), agent, model)
+            self.assertEqual(response["statusCode"], 400)
+            agent.retrieve.assert_not_called()
+            model.converse.assert_not_called()
+
+    def test_customer_two_filter_and_base64_body(self):
+        import base64
+        agent, model = Mock(), Mock()
+        agent.retrieve.return_value = {"retrievalResults": []}
+        request = event({"question": "Deductible?", "lob": "property", "owner_id": "customer_two"})
+        request["body"] = base64.b64encode(request["body"].encode()).decode()
+        request["isBase64Encoded"] = True
+        self.assertEqual(self.invoke(request, agent, model)["statusCode"], 200)
+        filters = agent.retrieve.call_args.kwargs["retrievalConfiguration"]["vectorSearchConfiguration"]["filter"]["andAll"]
+        self.assertEqual(filters, [{"equals": {"key": "owner_id", "value": "customer_two"}}, {"equals": {"key": "lob", "value": "property"}}])
 
     def test_retrieval_always_filters_owner_and_lob(self):
         agent, model = Mock(), Mock()

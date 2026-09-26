@@ -3,10 +3,10 @@
 These roots define the offline foundation and opt-in query infrastructure described in the [Phase 1 plan](../../../docs/PHASE_1_AWS_POC_PLAN.md).
 
 - `bootstrap` manages the Terraform state bucket.
-- `development` defines 22 resources by default: the original 13 offline resources, a validation-runner policy, an ingestion log group, six ingestion/index metric filters, and a dashboard. Enabling the query API adds 19 resources; optional Cognito adds two. Each configured operator policy attachment adds one.
+- `development` defines 22 resources by default: the original 13 offline resources, a validation-runner policy, an ingestion log group, six ingestion/index metric filters, and a dashboard. Enabling the query API adds 24 resources. Each configured operator policy attachment adds one.
 - Setting `ingestion_runner_role_name` adds one policy attachment to an existing operator role. Otherwise attach the exported policy through your identity system before ingestion.
 - RDS checkpoints, custom VPC networking, SQS, ECS roles, ECR and the AgentCore runtime are outside this POC and have been removed from these roots.
-- API Gateway, ZIP Lambda deployment, JWT authentication configuration, optional Cognito, and CloudWatch observability are defined. The query handler and reproducible artifact build are included; ingestion telemetry emission and live acceptance checks remain application work, so infrastructure alone does not complete Phase 1.
+- API Gateway, ZIP Lambda deployment, operator-only IAM authentication, and CloudWatch observability are defined. The query handler and reproducible artifact build are included; ingestion telemetry emission and live acceptance checks remain application work, so infrastructure alone does not complete Phase 1.
 - Configuration is explicit in ignored `terraform.tfvars` and backend files copied from the examples. Terraform does not load the application `.env`.
 - Use AWS environment credentials or a deployment profile. Do not put application tokens or database passwords in Terraform.
 
@@ -142,43 +142,56 @@ bucket uses `force_destroy = true`; destroying it deletes state history as well.
    exported ingestion policy to the ingestion operator and the separate validation
    policy to a trusted validation operator. The latter can retrieve all owners'
    documents for isolation testing; never grant it to API users.
-2. Use an existing HTTPS JWT issuer with access-token scopes, or set
-   `create_cognito = true` and deploy the pool/client while the API remains disabled.
-   Cognito uses SRP sign-in (`USER_SRP_AUTH`) and refresh tokens, without a hosted UI
-   or client secret. Provision the two synthetic users and set their passwords
-   through the identity provider outside Terraform. Read each immutable `sub`;
-   put these in `owner_by_subject`, mapped to `customer_one` and `customer_two`.
-   Cognito access tokens include `aws.cognito.signin.user.admin`; the route requires
-   this scope to exclude ID tokens. For another provider supply `jwt_issuer`,
-   `jwt_audience`, and `jwt_scopes` matching that provider's access tokens.
+2. Set `query_operator_arn` to your exact IAM user, role, or root ARN in this
+   account. Use `aws sts get-caller-identity` to verify the credentials. For an
+   assumed role, configure its IAM role ARN, not an STS session ARN. No Cognito
+   users or JWT tokens are required. The REST API requires IAM signatures and
+   explicitly denies all other principals using `aws:PrincipalArn`; even a root
+   ARN is matched as an exact identity, not an account-wide grant.
 3. Run ingestion and retrieval/source/replacement/owner-and-LOB isolation checks.
    Retain their reports, then set `index_validation_passed = true`. This is an
    operator attestation, not an automated verification of those reports. Repeat
    validation after corpus or indexing changes.
 4. Build the query Lambda ZIP with `scripts/build_query_lambda.sh` (it writes
    `build/lambda/query.zip`) to the contract below. Configure `query_lambda_zip`
-   (absolute path recommended), `query_lambda_handler`, and the two subject mappings.
+   (absolute path recommended), `query_lambda_handler`, and `query_operator_arn`.
    Set `enable_query_api = true`, generate a new saved plan, review, and apply it.
    Terraform hashes the ZIP to detect code changes. No placeholder handler is shipped.
-5. Use `query_endpoint` with a bearer access token for deployed tests. Check both
-   owners and LOBs, unmapped subjects, invalid/missing tokens, unsupported questions,
-   caller-supplied owner IDs, citations, and a controlled failure. Review
-   `observability` destinations and confirm telemetry actually arrives.
+5. Use the [online runner](../../../docs/ONLINE_RAG_TESTING.md) with your existing
+   AWS credentials. Check both synthetic customers and LOBs, missing/invalid
+   signatures, invalid customer IDs, unsupported questions, citations, and a
+   controlled failure. Verify another principal is denied if separate credentials
+   are available. Confirm gateway rejections do not invoke Lambda or Bedrock.
 
-The API has one `POST /query` route, 2 requests/second with burst 5, a 30-second
-integration timeout, and a default 28-second Lambda timeout. These are POC defaults;
-measure model latency before acceptance. HTTP API log delivery also requires the
-**deployment identity** to have the logging setup permissions documented by
-[AWS](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-logging.html),
-including Create/Update/Delete/Get/ListLogDelivery and Describe/PutResourcePolicy.
-The root supplies a destination-scoped delivery resource policy; it does not manage
-or broaden the external deployment identity. Verify actual delivery after apply.
-JWT route scopes follow the [AWS authorizer contract](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-jwt-authorizer.html).
+The REST API has one `POST /query` method at stage `poc`, 2 requests/second with
+burst 5, a 29-second integration timeout, and a default 28-second Lambda timeout.
+Measure model latency before acceptance. The endpoint remains publicly reachable,
+with unauthorized invocation denied at API Gateway. The operator selects either
+synthetic customer; customer login authorization is outside this POC's scope.
 
-The RAG answer model is configured with `bedrock_rag_model_id` and exported as
-`bedrock.rag_model_id`. Update existing tfvars and `TF_VAR_` overrides to this name.
-The query Lambda receives `BEDROCK_RAG_MODEL_ID`; the separate language adapter
-continues to use `BEDROCK_MODEL_ID`. Embedding model configuration is separate.
+REST API access logs require a regional API Gateway CloudWatch role. This root
+manages `aws_api_gateway_account.query`, its logging role and scoped policy. This
+is an account/region-wide setting: inspect `aws apigateway get-account` first;
+import/reconcile existing configuration before applying if already managed. The
+scoped logging role supports this POC log group; coordinate before sharing the
+regional setting with other APIs. Verify actual log delivery after apply.
+
+Migration from an earlier deployed HTTP API replaces the endpoint URL. Update
+`RAG_QUERY_ENDPOINT` from the new Terraform output. Remove obsolete `create_cognito`,
+`jwt_issuer`, `jwt_audience`, `jwt_scopes`, and `owner_by_subject` tfvars. Review a
+fresh plan for old API/Cognito deletions before applying. No state moves are valid
+between HTTP and REST API resource types. Keep the API disabled until offline
+validation passes; do not set `index_validation_passed` merely to produce a plan.
+
+The RAG answer model is configured with `bedrock_rag_answer_model_id` and exported as
+`bedrock.rag_answer_model_id`. Update existing tfvars and `TF_VAR_` overrides to this name.
+The query Lambda receives `BEDROCK_RAG_ANSWER_MODEL_ID`; the separate language adapter
+continues to use `BEDROCK_MODEL_ID`.
+The embedding model is configured with `bedrock_embedding_model_id` in
+`terraform.tfvars` (default `amazon.titan-embed-text-v2:0`) and exported as
+`bedrock.embedding_model_id`. It supplies the knowledge base model ARN and ingestion
+IAM permissions. The selected model must support the configured 1,024-dimensional
+float32 vectors.
 
 ### Lambda artifact contract
 
@@ -189,21 +202,22 @@ and AgentCore applications are not this handler.
 The existing Bedrock smoke retrieval helper does not enforce owner/LOB isolation
 and must not be used as the production query authorization path.
 
-Handle HTTP API payload v2. Read verified `iss` and `sub` exclusively from
-`requestContext.authorizer.jwt.claims`; compare `iss` with `JWT_ISSUER` and look up
-`sub` in `OWNER_BY_SUBJECT_JSON`. Reject missing/unmapped identities before any
-retrieval. Validate the question and supported LOB; apply both `owner_id` and `lob`
-filters to every retrieval. Never use a body/header owner ID for authorization.
+Handle REST API Lambda proxy payloads. Read the verified IAM identity from
+`requestContext.identity.userArn` and compare it to `QUERY_OPERATOR_ARN` (including
+STS sessions for the approved role). The gateway resource policy is the primary
+access boundary. Validate `question`, supported `lob`, and a body `owner_id` of
+exactly `customer_one` or `customer_two`; apply both customer and LOB filters to
+every retrieval. The customer selection is test input, not a user identity.
 Return answer, citations, and request ID; return insufficient information when
 retrieved evidence does not support an answer.
 
-Terraform supplies `BEDROCK_KNOWLEDGE_BASE_ID`, `BEDROCK_RAG_MODEL_ID`,
-`KNOWLEDGE_RESULT_COUNT`, `MODEL_MAX_TOKENS`, `MODEL_TEMPERATURE`, and
+Terraform supplies `BEDROCK_KNOWLEDGE_BASE_ID`, `BEDROCK_RAG_ANSWER_MODEL_ID`,
+`QUERY_OPERATOR_ARN`, `KNOWLEDGE_RESULT_COUNT`, `MODEL_MAX_TOKENS`, `MODEL_TEMPERATURE`, and
 `QUERY_DEADLINE_SECONDS`. Lambda supplies `AWS_REGION`. Enforce the overall deadline
 across retrieval, generation and SDK retries; the existing 120-second smoke-client
 read timeout is unsuitable. Terraform's timeout and token settings do not enforce
-these application behaviors. Subject mappings are deployment configuration stored
-in state, not secrets; do not include credentials.
+these application behaviors. The operator ARN is deployment configuration stored
+in state, not a secret; do not include credentials.
 
 ### Telemetry contract
 
@@ -226,7 +240,7 @@ not metric dimensions; omit questions, policy text, tokens and credentials.
 | `retrieval_count` | Numeric total retrieved evidence count once per query. |
 | `has_citations`, `insufficient_information` | JSON booleans on the final query event. |
 | `input_tokens`, `output_tokens` | Numeric model usage when available, once per query. |
-| `event: authorization_failed` | Lambda rejected a missing/unmapped identity. |
+| `event: authorization_failed` | Lambda rejected a missing or unapproved AWS identity. |
 | `request_id` | API request ID on every query event for correlation. |
 
 API access-log filters count 401/403 responses, including pre-Lambda rejections.

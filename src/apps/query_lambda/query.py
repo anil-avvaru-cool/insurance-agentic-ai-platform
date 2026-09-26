@@ -49,21 +49,14 @@ def _number(name: str, default: float, minimum: float, maximum: float) -> float:
 
 
 def _configuration() -> dict[str, Any]:
-    required = ("BEDROCK_KNOWLEDGE_BASE_ID", "BEDROCK_RAG_MODEL_ID", "JWT_ISSUER", "OWNER_BY_SUBJECT_JSON")
+    required = ("BEDROCK_KNOWLEDGE_BASE_ID", "BEDROCK_RAG_ANSWER_MODEL_ID", "QUERY_OPERATOR_ARN")
     missing = [name for name in required if not os.environ.get(name)]
     if missing:
         raise RuntimeError("missing required configuration: " + ", ".join(missing))
-    try:
-        owners = json.loads(os.environ["OWNER_BY_SUBJECT_JSON"])
-    except (TypeError, json.JSONDecodeError) as error:
-        raise RuntimeError("OWNER_BY_SUBJECT_JSON must be a JSON object") from error
-    if not isinstance(owners, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in owners.items()):
-        raise RuntimeError("OWNER_BY_SUBJECT_JSON must map subjects to owners")
     return {
         "knowledge_base_id": os.environ["BEDROCK_KNOWLEDGE_BASE_ID"],
-        "model_id": os.environ["BEDROCK_RAG_MODEL_ID"],
-        "issuer": os.environ["JWT_ISSUER"].rstrip("/"),
-        "owners": owners,
+        "model_id": os.environ["BEDROCK_RAG_ANSWER_MODEL_ID"],
+        "operator_arn": os.environ["QUERY_OPERATOR_ARN"],
         "result_count": _integer("KNOWLEDGE_RESULT_COUNT", 5, 1, 20),
         "max_tokens": _integer("MODEL_MAX_TOKENS", 512, 1, 4096),
         "temperature": _number("MODEL_TEMPERATURE", 0, 0, 1),
@@ -87,18 +80,20 @@ def _request_id(event: dict[str, Any], context: Any) -> str:
     return str(event.get("requestContext", {}).get("requestId") or getattr(context, "aws_request_id", "unknown"))
 
 
-def _authorize(event: dict[str, Any], config: dict[str, Any]) -> str:
-    claims = event.get("requestContext", {}).get("authorizer", {}).get("jwt", {}).get("claims", {})
-    issuer, subject = claims.get("iss"), claims.get("sub")
-    if not isinstance(issuer, str) or issuer.rstrip("/") != config["issuer"] or not isinstance(subject, str):
-        raise RequestError(401, "unauthorized", "A verified identity is required.")
-    owner = config["owners"].get(subject)
-    if not owner:
-        raise RequestError(403, "forbidden", "The verified identity is not mapped to a policy owner.")
-    return owner
+def _authorize(event: dict[str, Any], config: dict[str, Any]) -> None:
+    # Only trust REST API Gateway's IAM context, never a caller-supplied header.
+    arn = event.get("requestContext", {}).get("identity", {}).get("userArn")
+    expected = config["operator_arn"]
+    allowed = arn == expected
+    if isinstance(arn, str) and ":role/" in expected:
+        account, role = expected.split(":role/", 1)
+        prefix = account.replace(":iam:", ":sts:") + ":assumed-role/" + role.rsplit("/", 1)[-1] + "/"
+        allowed = arn.startswith(prefix) and bool(arn[len(prefix):]) and "/" not in arn[len(prefix):]
+    if not allowed:
+        raise RequestError(403, "forbidden", "The approved AWS operator identity is required.")
 
 
-def _input(event: dict[str, Any]) -> tuple[str, str]:
+def _input(event: dict[str, Any]) -> tuple[str, str, str]:
     raw = event.get("body")
     if event.get("isBase64Encoded") and isinstance(raw, str):
         try:
@@ -116,7 +111,10 @@ def _input(event: dict[str, Any]) -> tuple[str, str]:
         raise RequestError(400, "invalid_question", "question must contain 1 to 2000 characters.")
     if not isinstance(lob, str) or lob.lower().strip() not in SUPPORTED_LOBS:
         raise RequestError(400, "invalid_lob", "lob must be auto or property.")
-    return question.strip(), lob.lower().strip()
+    owner = body.get("owner_id")
+    if not isinstance(owner, str) or owner not in {"customer_one", "customer_two"}:
+        raise RequestError(400, "invalid_owner", "owner_id must be customer_one or customer_two.")
+    return question.strip(), lob.lower().strip(), owner
 
 
 def _remaining(deadline: float) -> float:
@@ -213,8 +211,8 @@ def handler(event: dict[str, Any], context: Any, *, agent_client: Any = None, mo
     retrieval_count, usage = 0, {"input_tokens": 0, "output_tokens": 0}
     try:
         config = _configuration()
-        owner = _authorize(event, config)
-        question, lob = _input(event)
+        _authorize(event, config)
+        question, lob, owner = _input(event)
         deadline = started + min(config["deadline_seconds"], max(1, getattr(context, "get_remaining_time_in_millis", lambda: 29000)() / 1000 - 0.5))
         if agent_client is None or model_client is None:
             default_agent, default_model = _clients(_remaining(deadline))

@@ -31,7 +31,7 @@ applied outputs; there are no bucket names or resource IDs to copy. It uses the
 standard AWS credential chain. It does not deploy infrastructure. The development
 root manages the S3 document bucket, S3 Vectors index, Bedrock knowledge base and
 data source, operator IAM policies, and CloudWatch observability. Query resources
-(API Gateway and ZIP Lambda) and Cognito are opt-in; keep `enable_query_api = false`
+(IAM-authenticated API Gateway and ZIP Lambda) is opt-in; keep `enable_query_api = false`
 for offline ingestion. RDS, SQS, ECR, custom VPC networking, ECS roles and the
 AgentCore runtime have been removed from the Terraform roots.
 If an older configuration was deployed, inspect its state and proposed deletions

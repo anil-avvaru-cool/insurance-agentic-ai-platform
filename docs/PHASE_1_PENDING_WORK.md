@@ -15,7 +15,7 @@ offline retrieval and isolation validation precede query API enablement.
 | P0 | Workloads: applications, Lambda, and services | Finish and verify the code that performs ingestion, retrieval, authorization, answer generation, telemetry, and acceptance testing. |
 | P1 | Infrastructure: offline foundation | Establish usable Terraform state, S3, Bedrock Knowledge Base, S3 Vectors, IAM, and ingestion observability in the target AWS account. |
 | P2 | Offline data and validation | Ingest the reviewed corpus and prove metadata, citations, replacement, owner isolation, and LOB isolation before exposing queries. |
-| P3 | Infrastructure: online API and identity | Deploy the Lambda/API/JWT path, test identities, owner mapping, least-privilege IAM, and query observability. |
+| P3 | Infrastructure: online API and identity | Deploy the Lambda/REST API/IAM path, operator allowlist, synthetic customer selection, least-privilege IAM, and query observability. |
 | P4 | End-to-end acceptance and operations | Prove the complete POC, retain reports, and document repeatable deployment, recovery, testing, and teardown. |
 
 ## P0 — Workloads: applications, Lambda, and services (prioritize first)
@@ -30,8 +30,8 @@ online traffic before P2 passes.
   The inventory says the handler artifact is pending, while `src/apps/query_lambda/query.py`,
   `scripts/build_query_lambda.sh`, and unit tests now exist in the working tree.
 - [ ] Complete review and local verification of the Lambda contract: accept only
-  `question` and supported `lob`, derive the owner from verified JWT claims,
-  reject missing or unmapped identities, and always retrieve with both owner and
+  `question`, supported `lob`, and synthetic `owner_id`; verify IAM operator context,
+  reject missing or unapproved identities, and always retrieve with both owner and
   LOB filters.
 - [ ] Verify grounded-answer behavior: Bedrock supplies only the draft answer;
   Lambda must accept citations only from filtered retrieval results and return
@@ -42,8 +42,8 @@ online traffic before P2 passes.
   timeouts, and upstream failures.
 - [ ] Build the reproducible Python 3.12 ZIP and verify that its handler path and
   dependencies match the Terraform configuration.
-- [ ] Add or complete application tests for malformed/base64 requests, JWT claim
-  handling, caller-supplied owner spoofing, both LOBs, cross-owner questions,
+- [ ] Add or complete application tests for malformed/base64 requests, IAM context
+  handling, invalid customer selection, both LOBs, cross-owner questions,
   model/citation failures, deadlines, and Bedrock failures.
 
 ### Offline ingestion and validation services
@@ -131,22 +131,22 @@ checks all pass.
 
 ### Identity and authorization
 
-- [ ] Select and configure an existing JWT provider or enable the optional
-  Cognito user pool and client.
-- [ ] Provision two synthetic identities without storing passwords in Terraform
-  configuration or state.
-- [ ] Configure the exact issuer, audience, required scope, and trusted
-  subject-to-owner mapping; ensure valid but unmapped users are rejected.
+- [ ] Configure the exact `query_operator_arn` and verify it matches the operator's
+  AWS credentials. No Cognito users or JWT tokens are needed.
+- [ ] Verify missing/invalid signatures and other principals are rejected before
+  Lambda execution. Testing another principal requires separate credentials.
+- [ ] Verify both synthetic customer IDs and reject missing/invalid selections.
+  Customer login isolation is outside this operator-only POC's scope.
 
 ### Lambda, API Gateway, and IAM
 
 - [ ] Configure the reviewed Lambda ZIP, handler, knowledge-base ID, answer-model
-  ID, owner mapping, result/token limits, and deadline settings.
+  ID, operator ARN, result/token limits, and deadline settings.
 - [ ] Deploy the Lambda execution role and least-privilege policy for filtered
   retrieval, answer-model invocation, and scoped logging.
-- [ ] Deploy API Gateway HTTP API, JWT authorizer, authenticated route,
+- [ ] Deploy API Gateway REST API, explicit operator-only policy, IAM-authenticated method,
   Lambda integration/permission, stage, access logging, and throttling.
-- [ ] Verify the 28-second Lambda and 30-second API integration budgets against
+- [ ] Verify the 28-second Lambda and 29-second API integration budgets against
   live model latency and controlled timeout behavior.
 
 ### Online observability
@@ -163,7 +163,7 @@ checks all pass.
 
 - [ ] Run deployed authenticated tests for every expected question across both
   users and both LOBs; compare answers and citations with the fixtures.
-- [ ] Verify unauthenticated, invalid-token, unmapped-user, invalid-input,
+- [ ] Verify unauthenticated, invalid-signature, unapproved-principal, invalid-input,
   cross-owner, cross-LOB, unsupported-question, and caller-owner-spoof cases.
 - [ ] Introduce controlled ingestion and query failures and confirm visible logs,
   metrics, nonzero ingestion exit status, and reviewable reports.
@@ -176,8 +176,8 @@ checks all pass.
 
 ## Deferred or conditional work
 
-- Optional Cognito resources are unnecessary when an approved existing JWT
-  provider supplies the required issuer, audience, and two test identities.
+- Customer authentication and Cognito are deferred; Phase 1 uses the operator's
+  existing AWS credentials with synthetic customer selection.
 - Optional operator-role attachments are unnecessary when equivalent scoped
   permissions are managed externally.
 - Automated alarms and alert delivery are outside Phase 1 unless the POC runs
