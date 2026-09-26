@@ -1,5 +1,7 @@
 # Phase 1: AWS Policy Coverage POC
 
+This document is the authoritative source for Phase 1 POC scope, requirements, and completion criteria. The resource inventory provides supporting implementation details, resource accounting, and deployment gates and must remain consistent with this plan. Implementation or deployment completion requires test and run evidence.
+
 ## Objective
 
 Deploy a small AWS proof of concept that answers policy coverage questions from four synthetic PDF documents, cites its sources, isolates content by authenticated policy owner and line of business (LOB), and reports when the documents do not support an answer.
@@ -130,6 +132,8 @@ Begin Terraform work alongside pipeline development. Offline infrastructure is a
 
 Keep environment-specific configuration outside application code.
 
+Document a repeatable teardown procedure for the POC resources, identifying any shared or retained resources that must be preserved.
+
 ### 8. Add observability
 
 #### Offline ingestion and indexing
@@ -183,4 +187,4 @@ Keep environment-specific configuration outside application code.
 - Terraform supports bootstrap, infrastructure provisioning, and API/Lambda deployment.
 - CloudWatch dashboards show ingestion and query activity.
 - A controlled failure demonstrates that logs and metrics expose failures, and failed ingestion exits unsuccessfully with a reviewable run report.
-- Deployment and test instructions are documented so the POC can be repeated.
+- Deployment, test, and teardown instructions are documented so the POC can be repeated and its resources cleaned up while preserving shared or explicitly retained resources.

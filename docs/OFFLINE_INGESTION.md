@@ -20,7 +20,7 @@ terraform -chdir=infra/aws/terraform/development init -reconfigure \
   -backend-config=development.s3.tfbackend
 terraform -chdir=infra/aws/terraform/development plan -out=development.tfplan
 terraform -chdir=infra/aws/terraform/development show development.tfplan
-# Apply after reviewing the plan, including any unrelated existing infrastructure:
+# Apply after reviewing the fresh plan and any proposed deletions:
 terraform -chdir=infra/aws/terraform/development apply development.tfplan
 PYTHONPATH=src uv run --locked python scripts/ingest_poc.py \
   --terraform-dir infra/aws/terraform/development
@@ -29,9 +29,14 @@ PYTHONPATH=src uv run --locked python scripts/ingest_poc.py \
 The ingestion command reads `ingestion_environment` directly from Terraform's
 applied outputs; there are no bucket names or resource IDs to copy. It uses the
 standard AWS credential chain. It does not deploy infrastructure. The development
-root also manages RDS, SQS, ECR and networking; it is not an ingestion-only stack.
+root manages the S3 document bucket, S3 Vectors index, Bedrock knowledge base and
+data source, operator IAM policies, and CloudWatch observability. Query resources
+(API Gateway and ZIP Lambda) and Cognito are opt-in; keep `enable_query_api = false`
+for offline ingestion. RDS, SQS, ECR, custom VPC networking, ECS roles and the
+AgentCore runtime have been removed from the Terraform roots.
+If an older configuration was deployed, inspect its state and proposed deletions
+before applying; removing configuration does not itself remove deployed resources.
 For a new account/backend, follow the [Terraform setup](../infra/aws/terraform/README.md).
-AgentCore image publishing and the runtime root are unnecessary for ingestion.
 
 Reports default to `ingestion_reports/<timestamp>_<unique_id>.json` (gitignored).
 Use `--report PATH` for a chosen location. The report includes run ID, document
@@ -55,7 +60,7 @@ The settings reviewed for this POC are:
 | Filterable metadata | Includes `owner_id` and `lob` |
 | Data-source deletion policy | `DELETE` |
 | Polling timeout | 900 seconds |
-| Document storage | Private, encrypted and versioned S3 |
+| Document storage | Private, encrypted S3; versioning opt-in |
 
 `knowledge_poc_prefix` and `knowledge_ingestion_timeout_seconds` are optional
 Terraform overrides. Required region/account variables and the backend must
@@ -70,7 +75,8 @@ to attach it to an existing operator IAM role, or attach the output policy via
 your IAM/SSO administration. An existing deployment identity with these rights
 can run immediately. The policy permits only eight document object uploads,
 lock reads/writes/deletion, bucket inspection/listing, vector-index inspection,
-and Bedrock configuration/job APIs. The knowledge-base service role separately
+Bedrock configuration/job APIs, and log stream creation/event writes in the
+ingestion log group. The knowledge-base service role separately
 reads the configured prefix and invokes embeddings/writes vectors. The ingestion
 identity needs no document-delete permission. Reading Terraform outputs also
 requires the operator's existing backend read permissions, separate from this policy.
@@ -109,9 +115,11 @@ S3 object names use stable policy IDs: `POC_AUTO_001.pdf`, `POC_AUTO_002.pdf`,
 `POC_PROPERTY_001.pdf`, `POC_PROPERTY_002.pdf`, plus their `.metadata.json`
 sidecars. The actual document ID/version stays in the PDF and metadata.
 A revised local filename such as `auto_user_1_v2.pdf` replaces
-`POC_AUTO_001.pdf`; it does not add a second source. Old S3 object versions remain
-recoverable through bucket versioning, but are not separate current sources for
-Bedrock ingestion. Bedrock syncs source changes incrementally; verify superseded
+`POC_AUTO_001.pdf`; it does not add a second source. To retain old object versions,
+set `knowledge_bucket_versioning_enabled = true` before uploading revisions;
+versioning defaults to suspended for this POC. Previously retained versions remain
+when versioning is suspended, but are not separate current sources for Bedrock
+ingestion. Bedrock syncs source changes incrementally; verify superseded
 content is absent in step 4. See [AWS data-source updates](https://docs.aws.amazon.com/bedrock/latest/userguide/kb-ds-update.html).
 
 To revise a policy, edit `documents.json`, regenerate the PDFs, remove the
@@ -197,5 +205,8 @@ Tests cover invalid/stale corpus, partial uploads, overlapping runs, live config
 mismatch, paginated active jobs, failed/stopped jobs, document failures, timeouts,
 lost start/poll responses, repeat runs, revised document IDs and unknown inventory.
 These are local tests using AWS doubles/mocked Terraform providers. The runner's
-JSON report supplies step 3 observability; CloudWatch metrics, dashboards, alarms
-and alert delivery remain step 8 work.
+JSON report supplies step 3 observability. Terraform defines the ingestion
+CloudWatch log group, metric filters and dashboard, but the CLI still needs a
+CloudWatch log publisher and live delivery verification for step 8. See the
+[telemetry contract](../infra/aws/terraform/README.md#telemetry-contract).
+Alarms and alert delivery remain outside the current POC scope.
