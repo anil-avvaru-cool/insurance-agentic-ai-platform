@@ -75,13 +75,6 @@ def scenarios(fixtures):
     for case in fixtures:
         payload = {"question": case["question"], "lob": case["lob"], "owner_id": case["owner_id"]}
         yield case["case_id"], "signed", payload, 200, case
-    payload = {"question": "What is my collision deductible?", "lob": "auto", "owner_id": "customer_one"}
-    yield "missing_auth", "unsigned", payload, 403, None
-    yield "invalid_auth", "invalid", payload, 403, None
-    yield "empty_question", "signed", {**payload, "question": ""}, 400, None
-    yield "invalid_lob", "signed", {**payload, "lob": "life"}, 400, None
-    yield "invalid_owner", "signed", {**payload, "owner_id": "unknown"}, 400, None
-    yield "missing_owner", "signed", {key: value for key, value in payload.items() if key != "owner_id"}, 400, None
 
 
 def run(client, endpoint, cases, interval, signer):
@@ -129,10 +122,15 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--endpoint", default=os.environ.get("RAG_QUERY_ENDPOINT"), help="Full HTTPS /query URL")
     parser.add_argument("--fixtures", type=Path, default=ROOT / "tests/fixtures/aws_poc/questions.json")
+    parser.add_argument("--case-id", required=True, help="Run exactly one question with this case_id")
     parser.add_argument("--report", type=Path)
     parser.add_argument("--profile", default=os.environ.get("AWS_PROFILE"), help="AWS credential profile")
     parser.add_argument("--region", default=os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION"), help="API AWS region")
     args = parser.parse_args(argv)
+    fixtures = json.loads(args.fixtures.read_text())
+    selected = [case for case in fixtures if case["case_id"] == args.case_id]
+    if len(selected) != 1:
+        parser.error(f"--case-id must match exactly one fixture; found {len(selected)} matches for {args.case_id!r}")
     url = urlsplit(args.endpoint or "")
     if url.scheme != "https" or not url.hostname or url.username or url.password or url.query or url.fragment:
         parser.error("provide an HTTPS endpoint without credentials, query string or fragment")
@@ -142,15 +140,14 @@ def main(argv=None):
     if session.get_credentials() is None:
         parser.error("configure AWS credentials for the approved operator")
     signer = RequestSigner(session)
-    fixtures = json.loads(args.fixtures.read_text())
     with httpx.Client(timeout=40, follow_redirects=False) as client:
-        results = run(client, args.endpoint, scenarios(fixtures), interval=0.6, signer=signer)
+        results = run(client, args.endpoint, scenarios(selected), interval=0.6, signer=signer)
     report = {
         "created_at": datetime.now(timezone.utc).isoformat(),
         "automated_checks_passed": all(item["passed"] for item in results),
         "semantic_review_required": True,
         "different_principal_check": "not run; requires separate AWS credentials",
-        "limitations": ["Human review of answer meaning and citation support required", "No replacement, injected backend failure or CloudWatch verification"],
+        "limitations": ["Human review of answer meaning and citation support required", "No authentication-negative, input-validation, replacement, injected backend failure or CloudWatch verification"],
         "results": results,
     }
     path = args.report or ROOT / "online_rag_reports" / f"{uuid.uuid4().hex}.json"

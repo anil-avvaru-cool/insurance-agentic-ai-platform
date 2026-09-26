@@ -18,9 +18,9 @@ AWS_DEFAULT_REGION=us-east-1
 From the repository root:
 
 ```sh
-uv run --locked --env-file .env python scripts/test_online_rag.py
+uv run --locked --env-file .env python scripts/test_online_rag.py --case-id auto_user_1_v1_comprehensive_deductible
 # Alternatively, select an existing profile explicitly:
-uv run --locked --env-file .env python scripts/test_online_rag.py --profile your-profile --region us-east-1
+uv run --locked --env-file .env python scripts/test_online_rag.py --case-id auto_user_1_v1_comprehensive_deductible --profile your-profile --region us-east-1
 ```
 
 The runner uses boto3's credential chain and signs each request with AWS Signature Version 4 for `execute-api`, including session tokens when applicable. It obtains current credentials for each signed request. The operator must have permission to invoke the configured API. Requests explicitly select one synthetic customer:
@@ -31,9 +31,9 @@ The runner uses boto3's credential chain and signs each request with AWS Signatu
 
 Only `customer_one` and `customer_two` are accepted. The handler applies customer and LOB filters to every retrieval. This validates synthetic customer document filtering, **not customer identity isolation**: the approved operator can select either customer.
 
-The runner executes all fixtures for both customers and checks response shape, request IDs, allowed citation documents, citation LOB/source/evidence IDs, expected monetary amounts, and the controlled insufficient-information response. It also tests missing/invalid signatures (gateway 403 responses) and invalid question/LOB/customer input. A live check with a different valid AWS principal requires separate credentials and is explicitly recorded as not run. With such credentials, a signed request must return 403 with no Lambda/Bedrock execution; verify this with gateway and Lambda logs.
+The runner requires `--case-id` and executes exactly one matching question from `tests/fixtures/aws_poc/questions.json` (or `--fixtures PATH`). Omitted, unknown, or duplicate matching IDs fail before AWS credential lookup or API requests. There is no run-all mode, and authentication-negative and invalid-input checks are not appended. Choose another case ID to test another question in a separate invocation. It checks response shape, request IDs, allowed citation documents, citation LOB/source/evidence IDs, expected monetary amounts, and the controlled insufficient-information response. A live check with a different valid AWS principal requires separate credentials and is explicitly recorded as not run. With such credentials, a signed request must return 403 with no Lambda/Bedrock execution; verify this with gateway and Lambda logs.
 
-Reports are written to gitignored `online_rag_reports/<unique-id>.json`; use `--report PATH` to select another location. Credentials and signing authorization values are redacted. The report contains synthetic answers, expected answers, supporting passages, errors and request IDs. Exit code 1 means an automated check failed; 0 means the automated checks passed, **not full Phase 1 acceptance**. Requests run sequentially with spacing, without retries, so throttling and service failures remain visible.
+Reports are written to gitignored `online_rag_reports/<unique-id>.json`; use `--report PATH` to select another location. Credentials and signing authorization values are redacted. The report contains synthetic answers, expected answers, supporting passages, errors and request IDs. Exit code 1 means an automated check failed; 0 means the automated checks passed, **not full Phase 1 acceptance**. Each invocation sends one request without retries, so throttling and service failures remain visible.
 
 Review each answer against the expected answer and supporting passages, including negation, limits, exclusions, and whether each citation actually supports the answer. Monetary matching alone is not semantic evaluation. Use request IDs to verify CloudWatch events separately. Replacement checks, injected backend failures and CloudWatch verification are outside this runner.
 

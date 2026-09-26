@@ -3,40 +3,38 @@
 Step 3 of [the Phase 1 plan](PHASE_1_AWS_POC_PLAN.md) is implemented by
 `scripts/ingest_poc.py`. It validates the four reviewed PDFs and current metadata
 sidecars, checks live AWS resources, uploads the eight approved source objects,
-then starts and monitors one Bedrock ingestion job. It writes a JSON report and
-returns nonzero on validation, upload, API, job, document, or timeout failures.
+then starts and monitors one Bedrock ingestion job. Once the runner initializes,
+it writes a JSON report and returns nonzero on validation, upload, API, job,
+document, or timeout failures. Startup failures while loading Terraform outputs,
+parsing settings, or creating AWS clients may exit before a report is created;
+inspect the terminal error in that case.
 A successful deployed run is still required to accept step 3. Retrieval,
 source citations and owner/LOB isolation are separate step 4 acceptance checks.
 
 ## Short path
 
-Use your AWS development login/profile and the existing initialized Terraform
-backend. No model API keys or application secrets are needed. Run from the repo:
+First complete the [development offline deployment](../infra/aws/terraform/README.md#development-offline-deployment)
+setup and policy attachments. Infrastructure deployment commands are maintained
+there; repeat ingestion uses the existing deployment and does not require another
+Terraform apply. Keep the query API disabled until offline validation passes.
+
+Use the approved ingestion operator's AWS credentials/profile and an initialized
+Terraform backend with read access to the applied development outputs. No model
+API keys or application secrets are needed. Run from the repository root:
 
 ```sh
-aws login  # only if your AWS CLI login session has expired
 uv sync --locked
-terraform -chdir=infra/aws/terraform/development init -reconfigure \
-  -backend-config=development.s3.tfbackend
-terraform -chdir=infra/aws/terraform/development plan -out=development.tfplan
-terraform -chdir=infra/aws/terraform/development show development.tfplan
-# Apply after reviewing the fresh plan and any proposed deletions:
-terraform -chdir=infra/aws/terraform/development apply development.tfplan
 PYTHONPATH=src uv run --locked python scripts/ingest_poc.py \
   --terraform-dir infra/aws/terraform/development
 ```
 
 The ingestion command reads `ingestion_environment` directly from Terraform's
 applied outputs; there are no bucket names or resource IDs to copy. It uses the
-standard AWS credential chain. It does not deploy infrastructure. The development
-root manages the S3 document bucket, S3 Vectors index, Bedrock knowledge base and
-data source, operator IAM policies, and CloudWatch observability. Query resources
-(IAM-authenticated API Gateway and ZIP Lambda) is opt-in; keep `enable_query_api = false`
-for offline ingestion. RDS, SQS, ECR, custom VPC networking, ECS roles and the
-AgentCore runtime have been removed from the Terraform roots.
-If an older configuration was deployed, inspect its state and proposed deletions
-before applying; removing configuration does not itself remove deployed resources.
-For a new account/backend, follow the [Terraform setup](../infra/aws/terraform/README.md).
+standard AWS credential chain. Select the intended profile (for example, with
+`AWS_PROFILE`) and refresh its credentials using your normal login method if
+needed. The command does not deploy infrastructure. See the
+[Terraform README](../infra/aws/terraform/README.md) for infrastructure scope,
+backend setup, and deployment migration guidance.
 
 Reports default to `ingestion_reports/<timestamp>_<unique_id>.json` (gitignored).
 Use `--report PATH` for a chosen location. The report includes run ID, document
@@ -87,15 +85,17 @@ indexing with a different configuration. S3 Vectors limits custom metadata to
 1 KiB; the runner checks the seven prepared fields against this limit.
 See [AWS vector-store requirements](https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-setup.html).
 
-For environments without local Terraform state access, set every required value
-in `.env` using [example.env](../example.env):
+For environments without Terraform backend/state access, obtain the applied
+deployment values from its operator and set every required value in `.env` using
+[example.env](../example.env). Replace the bucket and ten-character Bedrock ID
+placeholders below with actual deployed values:
 
 ```dotenv
 AWS_REGION=us-east-1
 KNOWLEDGE_BUCKET=your_actual_bucket
 KNOWLEDGE_POC_PREFIX=approved/aws_poc/
-BEDROCK_KNOWLEDGE_BASE_ID=YOURKB1234
-BEDROCK_DATA_SOURCE_ID=YOURDS1234
+BEDROCK_KNOWLEDGE_BASE_ID=YOURKB12345
+BEDROCK_DATA_SOURCE_ID=YOURDS12345
 KNOWLEDGE_INGESTION_TIMEOUT_SECONDS=900
 ```
 
@@ -122,9 +122,13 @@ when versioning is suspended, but are not separate current sources for Bedrock
 ingestion. Bedrock syncs source changes incrementally; verify superseded
 content is absent in step 4. See [AWS data-source updates](https://docs.aws.amazon.com/bedrock/latest/userguide/kb-ds-update.html).
 
-To revise a policy, edit `documents.json`, regenerate the PDFs, remove the
+To revise a policy, edit [documents.json](../data/sample_insurance_policies/documents.json), regenerate the PDFs, remove the
 superseded local PDF/sidecar, regenerate sidecars, update question fixtures and
-the metadata review record, then run the same ingestion command. The current
+the metadata review record, then run the same ingestion command. Follow the
+corpus README's [PDF regeneration instructions](../data/sample_insurance_policies/README.md#source-and-regeneration),
+[metadata preparation commands](../data/sample_insurance_policies/README.md#metadata-extraction-and-validation),
+and [review record](../data/sample_insurance_policies/README.md#metadata-review-record).
+The current
 allowlist requires exactly four policies, so additions or removal of a policy
 fail before upload and require an explicit code/Terraform inventory review.
 Unexpected remote objects also block sync; the runner never deletes them or
@@ -192,7 +196,23 @@ Do not use recursive S3 deletion. Rerun the normal command after correcting the
 failure. A process crash may leave a lock even if the local report was not updated;
 treat the remote lock as authoritative and inspect before retrying.
 
-## Verification
+## Live acceptance after ingestion
+
+Retain the successful ingestion report, then complete the Phase 1 plan's
+[indexing validation requirements](PHASE_1_AWS_POC_PLAN.md#4-configure-and-validate-document-indexing):
+verify all four documents, source references, combined owner/LOB filtering, and
+replacement of a revised document. Retain evidence for these checks separately
+from the ingestion report. A successful ingestion job does not prove retrieval
+correctness or isolation.
+
+A repeatable index-validation command/procedure is still
+[pending](PHASE_1_PENDING_WORK.md#offline-ingestion-and-validation-services).
+The generic smoke retrieval helper does not establish this acceptance gate.
+Keep `enable_query_api = false` and do not set `index_validation_passed = true`
+until the live validation evidence has been reviewed. Then follow the
+[query deployment instructions](../infra/aws/terraform/README.md#phase-1-query-deployment).
+
+## Local verification
 
 ```sh
 PYTHONPATH=src:. uv run --locked python -m unittest discover -s tests/unit -v

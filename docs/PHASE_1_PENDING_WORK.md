@@ -4,6 +4,11 @@ This backlog consolidates the unfinished work described by
 [PHASE_1_AWS_POC_PLAN.md](PHASE_1_AWS_POC_PLAN.md) and
 [PHASE_1_AWS_RESOURCE_INVENTORY.md](PHASE_1_AWS_RESOURCE_INVENTORY.md).
 
+**Status convention:** checked items indicate repository implementation, not AWS
+acceptance. Terraform resources are defined, but deployment and live acceptance
+remain unverified in the inventory. Keep live gates open until reviewable run
+evidence establishes that they passed.
+
 Priority describes the recommended implementation focus. Deployment must still
 respect the gates below: bootstrap and offline infrastructure precede ingestion;
 offline retrieval and isolation validation precede query API enablement.
@@ -26,9 +31,10 @@ online traffic before P2 passes.
 
 ### Query Lambda and API behavior
 
-- [ ] Reconcile the resource inventory with the current query implementation.
-  The inventory says the handler artifact is pending, while `src/apps/query_lambda/query.py`,
-  `scripts/build_query_lambda.sh`, and unit tests now exist in the working tree.
+- [x] Implement the query handler, ZIP packaging, and initial unit coverage.
+  The inventory now records `src/apps/query_lambda/query.py`,
+  `scripts/build_query_lambda.sh`, and `tests/unit/test_query_lambda.py` as
+  implemented. Artifact verification and deployed acceptance remain open below.
 - [ ] Complete review and local verification of the Lambda contract: accept only
   `question`, supported `lob`, and synthetic `owner_id`; verify IAM operator context,
   reject missing or unapproved identities, and always retrieve with both owner and
@@ -37,14 +43,20 @@ online traffic before P2 passes.
   Lambda must accept citations only from filtered retrieval results and return
   the controlled insufficient-information response when evidence is absent or
   unsupported.
-- [ ] Freeze and document the response/error JSON schemas for `answer`,
-  `citations`, `request_id`, validation failures, authorization failures,
-  timeouts, and upstream failures.
-- [ ] Build the reproducible Python 3.12 ZIP and verify that its handler path and
-  dependencies match the Terraform configuration.
-- [ ] Add or complete application tests for malformed/base64 requests, IAM context
-  handling, invalid customer selection, both LOBs, cross-owner questions,
-  model/citation failures, deadlines, and Bedrock failures.
+- [ ] Verify the implemented response contract in deployed API tests: success
+  returns `answer`, `citations`, and `request_id`; handler failures return
+  `error` with `code` and `message`, plus `request_id`. Check validation,
+  authorization, deadline, and upstream failures, and separately capture
+  API Gateway rejections that occur before Lambda.
+- [ ] Build and test `build/lambda/query.zip` for the configured Python 3.12
+  runtime and `query.handler` entry point. Packaging includes `query.py` and
+  relies on runtime-provided Boto3/Botocore. Retain evidence that the tested
+  artifact is the artifact deployed by Terraform.
+- [ ] Review remaining local test gaps and add coverage for malformed requests,
+  both LOBs, cross-owner questions, model failures, deadlines, and Bedrock
+  failures as needed. Existing handler tests cover IAM context rejection,
+  approved role sessions, invalid customer selection, valid base64 requests,
+  owner-and-LOB filters, unknown citations, and empty retrieval results.
 
 ### Offline ingestion and validation services
 
@@ -54,9 +66,13 @@ online traffic before P2 passes.
 - [ ] Implement or designate one repeatable index-validation command that checks
   all four documents, source references, combined owner-and-LOB filtering, and
   replacement of a revised document. The generic smoke helper is not the
-  production authorization path.
+  Phase 1 acceptance runner; its generic retrieval does not prove isolation.
+  Use `scripts/ingest_poc.py` for managed POC ingestion: the smoke helper's
+  `ingest` operation bypasses POC locking.
 - [ ] Emit the documented structured ingestion and index-validation events to
-  CloudWatch. The log group and metric filters alone do not create telemetry.
+  CloudWatch. The current ingestion CLI writes a local report only. Match the
+  documented metric-filter contract and avoid duplicate direct metric publishing;
+  the log group and metric filters alone do not create telemetry.
 - [x] Ensure every failed or timed-out ingestion exits nonzero and leaves a
   reviewable report containing the job/run identifiers needed for recovery.
   Implemented in `scripts/ingest_poc.py` and `src/ingestion/offline.py`; local
@@ -71,12 +87,29 @@ online traffic before P2 passes.
   `tests/fixtures/aws_poc/questions.json` contains 36 cases: 24 supported questions
   with supporting passages, eight unsupported questions, and four cross-owner
   attempts. Paired cases cover both owners and both LOBs.
-- [ ] Automate the deployed authenticated test matrix for both users and both
-  LOBs, including attempted cross-owner access and caller-supplied owner IDs.
+- [x] Implement a SigV4-authenticated online fixture runner with retained reports.
+  [test_online_rag.py](../scripts/test_online_rag.py) requires `--case-id` and
+  runs exactly one selected fixture per invocation, checking response shape,
+  request IDs, citations, expected amounts, and insufficient-information behavior.
+  See [ONLINE_RAG_TESTING.md](ONLINE_RAG_TESTING.md).
+- [ ] Execute the complete fixture matrix through separate runner invocations
+  across both synthetic customers and both LOBs, including cross-owner question
+  attempts and unsupported questions; retain responses and request IDs.
+- [ ] Supply separate deployed checks for missing/invalid signatures and invalid
+  customer/question/LOB inputs; the runner does not execute these. Test an
+  unapproved principal using separate credentials; the runner records that
+  check as not run. Controlled backend failures and CloudWatch verification
+  also remain outside the runner.
 - [ ] Evaluate answer accuracy and citation correctness separately from the
   operational `has_citations` metric.
 
 ## P1 — Infrastructure: offline foundation
+
+All infrastructure tasks below concern deployment and verification of existing
+Terraform definitions, rather than missing resource implementations. The inventory
+counts six separate bootstrap resources, 22 default development resources,
+24 additional resources when queries are enabled, and one resource per optional
+operator-role attachment. These are configuration counts, not an account plan.
 
 ### Terraform bootstrap and configuration
 
@@ -151,6 +184,8 @@ checks all pass.
 
 ### Online observability
 
+- [ ] Reconcile any existing regional API Gateway logging-role setting before
+  applying the defined API log delivery role, policy, and account configuration.
 - [ ] Verify Lambda and API log delivery and retention, including requests that
   authentication rejects before Lambda invocation.
 - [ ] Confirm structured query events drive metrics for retrieval count,
@@ -162,17 +197,26 @@ checks all pass.
 ## P4 — End-to-end acceptance and operational handoff
 
 - [ ] Run deployed authenticated tests for every expected question across both
-  users and both LOBs; compare answers and citations with the fixtures.
+  synthetic customers and both LOBs using one `--case-id` invocation per fixture;
+  review semantic answer support and citation correctness against the fixtures.
+  A passing automated report alone does not establish answer quality.
 - [ ] Verify unauthenticated, invalid-signature, unapproved-principal, invalid-input,
-  cross-owner, cross-LOB, unsupported-question, and caller-owner-spoof cases.
+  cross-owner question, cross-LOB, and unsupported-question cases. Confirm that
+  question text cannot override the selected owner/LOB filters. Selecting either
+  valid `owner_id` is authorized for the approved operator; reject missing or
+  invalid selections rather than treating a valid customer switch as spoofing.
 - [ ] Introduce controlled ingestion and query failures and confirm visible logs,
   metrics, nonzero ingestion exit status, and reviewable reports.
 - [ ] Review the CloudWatch dashboard during ingestion and query tests and retain
   evidence of activity, failures, latency, and throttling behavior.
-- [ ] Document exact deployment, configuration, ingestion, validation, API test,
-  retained-lock recovery, rollback, and teardown procedures.
+- [ ] Verify and complete the existing [Terraform runbook](../infra/aws/terraform/README.md),
+  [offline ingestion runbook](OFFLINE_INGESTION.md), and
+  [online test runbook](ONLINE_RAG_TESTING.md) against accepted runs. Fill gaps
+  in index validation, retained-lock recovery, rollback, and teardown procedures;
+  identify shared or retained resources and link the acceptance reports.
 - [ ] Update both source planning documents so implementation status matches the
-  accepted system, especially the Lambda artifact and telemetry status.
+  accepted system. Record deployed artifact evidence and live telemetry results;
+  do not equate implemented code or a successful apply with acceptance.
 
 ## Deferred or conditional work
 

@@ -1,13 +1,17 @@
 import json
+from contextlib import redirect_stderr
+from io import StringIO
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest import TestCase
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 from botocore.credentials import Credentials
 from botocore.auth import SigV4Auth
 from botocore.awsrequest import AWSRequest
 
 import httpx
 
-from scripts.test_online_rag import INSUFFICIENT, ROOT, RequestSigner, check_answer, run, scenarios
+from scripts.test_online_rag import INSUFFICIENT, ROOT, RequestSigner, check_answer, main, run, scenarios
 
 
 class OnlineRagRunnerTests(TestCase):
@@ -45,7 +49,11 @@ class OnlineRagRunnerTests(TestCase):
             if len(requests) > 1:
                 return httpx.Response(403, json={"message": "Forbidden"})
             return httpx.Response(200, json=self.body)
-        cases = list(scenarios([self.case]))[:3]
+        cases = list(scenarios([self.case]))
+        self.assertEqual(len(cases), 1)
+        payload = cases[0][2]
+        cases.extend([("missing_auth", "unsigned", payload, 403, None),
+                      ("invalid_auth", "invalid", payload, 403, None)])
         with httpx.Client(transport=httpx.MockTransport(respond)) as client:
             results = run(client, "https://example.test/poc/query", cases, 0, self.signer)
         self.assertTrue(all(result["passed"] for result in results))
@@ -73,3 +81,36 @@ class OnlineRagRunnerTests(TestCase):
         with httpx.Client(transport=httpx.MockTransport(timeout)) as client:
             result = run(client, "https://example.test/query", cases, 0, self.signer)[0]
         self.assertEqual(result["errors"], ["ReadTimeout"])
+
+    def test_case_id_is_required_and_invalid_selection_never_contacts_aws(self):
+        with TemporaryDirectory() as directory:
+            fixtures = Path(directory) / "questions.json"
+            fixtures.write_text(json.dumps([self.case, self.case]))
+            for args in ([], ["--case-id", "unknown"],
+                         ["--case-id", self.case["case_id"], "--fixtures", str(fixtures)]):
+                with self.subTest(args=args), patch("scripts.test_online_rag.boto3.Session") as session, patch("scripts.test_online_rag.httpx.Client") as client:
+                    with redirect_stderr(StringIO()), self.assertRaises(SystemExit) as error:
+                        main(args)
+                    self.assertEqual(error.exception.code, 2)
+                    session.assert_not_called()
+                    client.assert_not_called()
+
+    def test_cli_sends_only_selected_question(self):
+        fixtures = json.loads((ROOT / "tests/fixtures/aws_poc/questions.json").read_text())
+        selected = fixtures[1]
+        requests = []
+
+        def respond(request):
+            requests.append(request)
+            return httpx.Response(200, json={**self.body, "answer": selected["expected_answer"]})
+
+        with TemporaryDirectory() as directory:
+            client = httpx.Client(transport=httpx.MockTransport(respond))
+            report = Path(directory) / "report.json"
+            with patch("scripts.test_online_rag.boto3.Session", return_value=self.signer.session), patch("scripts.test_online_rag.httpx.Client", return_value=client):
+                result = main(["--case-id", selected["case_id"], "--endpoint", "https://example.test/query", "--report", str(report)])
+            self.assertEqual(result, 0)
+            self.assertEqual(len(requests), 1)
+            self.assertEqual(json.loads(requests[0].content)["question"], selected["question"])
+            results = json.loads(report.read_text())["results"]
+            self.assertEqual([item["case_id"] for item in results], [selected["case_id"]])

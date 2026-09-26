@@ -50,13 +50,13 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     autonumber
-    participant Customer
+    participant Operator
     participant API as API Gateway + IAM policy
     participant Lambda as Query Lambda
     participant KB as Bedrock Knowledge Base
     participant Model as Bedrock answer model
     participant Logs as CloudWatch
-    Customer->>API: POST /query with token, question, and LOB
+    Operator->>API: SigV4-signed POST /query with question, owner_id, and LOB
     API->>API: Validate AWS signature and exact operator principal
     API->>Lambda: Invoke with verified IAM context
     Lambda->>Lambda: Validate selected synthetic customer, question and LOB
@@ -71,7 +71,7 @@ sequenceDiagram
     end
     Lambda->>Logs: Write correlated query event
     Lambda-->>API: HTTP result with answer, citations, and request ID
-    API-->>Customer: Return HTTP response
+    API-->>Operator: Return HTTP response
 ```
 
 The query Lambda is the online orchestrator. It is intended to enforce authorization, call filtered retrieval, invoke the answer model, validate/assemble citations from retrieved source metadata, apply the insufficient-information behavior, emit telemetry, and format the HTTP response. The **model produces only a draft answer (and model usage data)**; it does not create the trusted request ID or independently authorize citations. Lambda obtains the request ID from the API/Lambda invocation context and returns it with the answer and citations.
@@ -168,6 +168,13 @@ API, including identities with broad same-account invocation permissions. Role
 access includes everyone who can assume the selected role. Administrators who
 can change the infrastructure can change these controls.
 
+SigV4 (AWS Signature Version 4) adds authentication headers calculated from the
+operator's AWS credentials and request contents, scoped to the API's region and
+the `execute-api` service. The secret access key is not sent. API Gateway verifies
+the signature and checks invocation permissions before forwarding the request to
+Lambda. In `test_online_rag.py`, Botocore's `SigV4Auth` performs this signing using
+credentials loaded by the Boto3 session.
+
 The approved operator supplies `owner_id` as `customer_one` or `customer_two`.
 Every retrieval includes both the selected customer and validated LOB. This tests
 customer document filtering; customer login isolation is outside Phase 1 scope.
@@ -238,7 +245,7 @@ These resources implement the Phase 1 workloads and do **not** add to the Terraf
 | [test_journey.py](../tests/integration/test_journey.py) | Local FastAPI `TestClient`, temporary SQLite stores, synthetic core and identities | Existing claims-intake/service integration regression suite, including ownership and restart behavior. It does not exercise the Phase 1 Lambda/API Gateway/Knowledge Base path and cannot satisfy Phase 1 deployed acceptance. |
 | [phase1.tftest.hcl](../infra/aws/terraform/development/tests/phase1.tftest.hcl) and [foundation.tftest.hcl](../infra/aws/terraform/development/tests/foundation.tftest.hcl) | Terraform with mocked providers | Validate infrastructure configuration and deployment gates; do not prove AWS resource readiness or workload behavior. |
 | Phase 1 live retrieval and replacement checks | AWS; required, dedicated runner pending | Retrieve all four documents with correct sources and owner/LOB filters, then revise and reingest a policy and verify new content is returned and superseded content is absent. Preserve a reviewable validation report before enabling queries. |
-| [test_online_rag.py](../scripts/test_online_rag.py) | Deployed AWS API; runner implemented, live execution pending | Runs fixtures for both customers with SigV4 signing, citation/amount checks, unsupported cases, missing/invalid signatures, and invalid customer/question/LOB input. Another-principal check requires separate credentials. Saves responses and request IDs. Human answer/citation review, controlled backend failures and CloudWatch evidence remain required. See [online RAG testing](ONLINE_RAG_TESTING.md). |
+| [test_online_rag.py](../scripts/test_online_rag.py) | Deployed AWS API; runner implemented, live execution pending | Runs exactly one fixture selected by required `--case-id` per invocation, using the operator's AWS credentials for SigV4 signing. Checks response shape, request IDs, citations, expected amounts, and controlled insufficient-information behavior for the selected case. Test both customers and unsupported questions through separate invocations. Saves responses and request IDs. Missing/invalid-signature and invalid customer/question/LOB checks are not run. Another-principal verification requires separate credentials and is recorded as not run. Human answer/citation review, authentication-negative and invalid-input checks, replacement checks, controlled backend failures, and CloudWatch evidence remain required. See [online RAG testing](ONLINE_RAG_TESTING.md). |
 
 Run these commands from the repository root with dependencies installed using `uv sync --locked`:
 
