@@ -37,4 +37,7 @@ Reports are written to gitignored `online_rag_reports/<unique-id>.json`; use `--
 
 Review each answer against the expected answer and supporting passages, including negation, limits, exclusions, and whether each citation actually supports the answer. Monetary matching alone is not semantic evaluation. Use request IDs to verify CloudWatch events separately. Replacement checks, injected backend failures and CloudWatch verification are outside this runner.
 
+Follow [CloudWatch RAG verification](CLOUDWATCH_RAG_VERIFICATION.md) to correlate
+request IDs with API/Lambda logs, inspect metrics, and retain telemetry evidence.
+
 For a direct Knowledge Base retrieval diagnostic without deploying the API, `scripts/bedrock_smoke.py retrieve --text "..."` remains available; it does not validate customer/LOB isolation or the authenticated online path.

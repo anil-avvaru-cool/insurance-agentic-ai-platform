@@ -1,12 +1,12 @@
 [
   {
     "metadata": {
-      "document_id": "auto_user_1_v1",
+      "document_id": "auto_user_1_v2",
       "owner_id": "customer_one",
       "policy_id": "POC_AUTO_001",
       "product_name": "Standard Auto",
       "lob": "auto",
-      "version": "1",
+      "version": "2",
       "effective_date": "2026-01-01"
     },
     "customer_name": "Avery Sample",
@@ -25,7 +25,7 @@
       },
       {
         "id": "collision",
-        "text": "Collision covers direct physical damage to the insured vehicle from impact with another vehicle or object, or overturn. Payment is limited to the actual cash value of the vehicle immediately before the loss, less a $500 deductible per covered loss."
+        "text": "Collision covers direct physical damage to the insured vehicle from impact with another vehicle or object, or overturn. Payment is limited to the actual cash value of the vehicle immediately before the loss, less a $750 deductible per covered loss."
       },
       {
         "id": "comprehensive",

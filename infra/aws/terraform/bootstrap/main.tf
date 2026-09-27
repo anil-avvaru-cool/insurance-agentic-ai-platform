@@ -11,7 +11,8 @@ resource "aws_s3_bucket" "state" {
 }
 resource "aws_s3_bucket_versioning" "state" {
   bucket = aws_s3_bucket.state.id
-  versioning_configuration { status = "Enabled" }
+  # POC: stop retaining new state versions, including on an existing bucket.
+  versioning_configuration { status = "Suspended" }
 }
 resource "aws_s3_bucket_server_side_encryption_configuration" "state" {
   bucket = aws_s3_bucket.state.id

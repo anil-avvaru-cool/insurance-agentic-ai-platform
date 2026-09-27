@@ -128,6 +128,9 @@ must already exist; the state-access helper does not create it.
   # Save text file for easy review
   terraform -chdir=infra/aws/terraform/development show -no-color development.tfplan > tfout.txt
 
+  # Group resources for main resources
+  uv run --locked python scripts/group_terraform_plan.py tfout.txt > tf_group_resources.txt
+
   # Save image file for easy review dependencies
   terraform -chdir=infra/aws/terraform/development graph | dot -Tpng > tfgraph.png
   ```
@@ -181,7 +184,15 @@ Use the returned `Arn` to choose the helper arguments:
 |---|---|
 | `arn:aws:iam::123456789012:user/alice` | `development user alice` |
 | `arn:aws:sts::123456789012:assumed-role/MyRole/session` | `development role MyRole` |
+| `arn:aws:iam::123456789012:root` | Skip this helper for the account root user; it does not need this IAM policy. |
 | Assumed role whose name starts with `AWSReservedSSO_` | Manage access through IAM Identity Center permission sets instead of this helper. |
+
+The AWS account root user is not an IAM user named `root`. Passing `user root`
+asks IAM to attach a policy to a literal IAM user with that name and returns
+`NoSuchEntity` if that user does not exist. Passing `user
+arn:aws:iam::123456789012:root` is also invalid because the helper accepts IAM
+names, not ARNs. To grant access to a separate deployment identity, supply that
+existing IAM user's or role's name.
 
 For example, if your deployment profile uses `alice` and your backend bucket is
 `example-terraform-state-123456789012`, grant access with:
@@ -250,7 +261,9 @@ key replaces that `null` version without preserving it for rollback. Versions
 previously created while versioning was enabled remain stored; suspending
 versioning does not delete them. Run ingestion again after replacing documents
 to update the knowledge base.
-Bootstrap state bucket versioning remains enabled.
+Bootstrap state bucket versioning is also suspended for the POC. Existing versions
+remain stored, but future state overwrites do not preserve rollback history.
+Enable versioning in `bootstrap/main.tf` when state recovery history is required.
 
 The [Step 3 runbook](../../../docs/OFFLINE_INGESTION.md) documents the repeatable CLI,
 POC parameters, IAM attachment, stable inventory and failure recovery. The
@@ -264,6 +277,12 @@ Stop ingestion and query callers before preparing a destroy plan. Review the pla
 and any retained data before applying it:
 
 ```sh
+# Example script to cleanup objects in bucket 
+bash scripts/empty_s3_bucket.sh \
+  bucketname \
+  account_number \
+  --region us-east-1
+
 terraform -chdir=infra/aws/terraform/development plan -destroy -out=teardown.tfplan
 terraform -chdir=infra/aws/terraform/development show teardown.tfplan
 ```
