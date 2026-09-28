@@ -11,6 +11,14 @@ from pathlib import Path
 
 
 PARENT_TYPES = {
+    # API components share a REST API parent; account settings remain top-level.
+    'aws_api_gateway_resource': 'aws_api_gateway_rest_api',
+    'aws_api_gateway_method': 'aws_api_gateway_rest_api',
+    'aws_api_gateway_integration': 'aws_api_gateway_rest_api',
+    'aws_api_gateway_deployment': 'aws_api_gateway_rest_api',
+    'aws_api_gateway_stage': 'aws_api_gateway_rest_api',
+    'aws_api_gateway_method_settings': 'aws_api_gateway_rest_api',
+    'aws_api_gateway_rest_api_policy': 'aws_api_gateway_rest_api',
     'aws_s3_bucket_public_access_block': 'aws_s3_bucket',
     'aws_s3_bucket_ownership_controls': 'aws_s3_bucket',
     'aws_s3_bucket_versioning': 'aws_s3_bucket',

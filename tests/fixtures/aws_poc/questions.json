@@ -1,4 +1,23 @@
 [
+    {
+    "case_id": "auto_user_1_v2_collision_deductible",
+    "owner_id": "customer_one",
+    "lob": "auto",
+    "question": "What is my collision deductible?",
+    "expected_status": "supported",
+    "expected_answer": "$750 per covered loss.",
+    "pair_id": "auto_collision_deductible",
+    "allowed_document_ids": [
+      "auto_user_1_v2"
+    ],
+    "supporting_passages": [
+      {
+        "document_id": "auto_user_1_v2",
+        "passage_id": "collision",
+        "text": "Collision covers direct physical damage to the insured vehicle from impact with another vehicle or object, or overturn. Payment is limited to the actual cash value of the vehicle immediately before the loss, less a $500 deductible per covered loss."
+      }
+    ]
+  },
   {
     "case_id": "auto_user_1_v1_collision_deductible",
     "owner_id": "customer_one",

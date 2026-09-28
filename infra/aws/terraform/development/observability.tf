@@ -47,18 +47,17 @@ resource "aws_iam_role" "api_logs" {
     Effect = "Allow", Action = "sts:AssumeRole", Principal = { Service = "apigateway.amazonaws.com" }
   }] })
 }
-resource "aws_iam_role_policy" "api_logs" {
-  count = local.query_count
-  role  = aws_iam_role.api_logs[0].id
-  policy = jsonencode({ Version = "2012-10-17", Statement = [
-    { Effect = "Allow", Action = ["logs:DescribeLogGroups"], Resource = "*" },
-    { Effect = "Allow", Action = ["logs:CreateLogStream", "logs:DescribeLogStreams", "logs:PutLogEvents", "logs:GetLogEvents", "logs:FilterLogEvents"], Resource = "${aws_cloudwatch_log_group.api[0].arn}:*" }
-  ] })
+# Use AWS's complete logging policy for the regional API Gateway account role,
+# including CreateLogGroup and access to API Gateway-managed log groups.
+resource "aws_iam_role_policy_attachment" "api_logs" {
+  count      = local.query_count
+  role       = aws_iam_role.api_logs[0].name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs"
 }
 resource "aws_api_gateway_account" "query" {
   count               = local.query_count
   cloudwatch_role_arn = aws_iam_role.api_logs[0].arn
-  depends_on          = [aws_iam_role_policy.api_logs]
+  depends_on          = [aws_iam_role_policy_attachment.api_logs]
 }
 resource "aws_cloudwatch_log_metric_filter" "ingestion" {
   for_each       = local.ingestion_metrics

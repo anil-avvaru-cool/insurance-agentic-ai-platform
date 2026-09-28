@@ -128,10 +128,10 @@ must already exist; the state-access helper does not create it.
   # Save text file for easy review
   terraform -chdir=infra/aws/terraform/development show -no-color development.tfplan > tfout.txt
 
-  # Group resources for main resources
+  # Group main resources, review before deploying billable resources
   uv run --locked python scripts/group_terraform_plan.py tfout.txt > tf_group_resources.txt
 
-  # Save image file for easy review dependencies
+  # Optinal, Save image file for easy review dependencies
   terraform -chdir=infra/aws/terraform/development graph | dot -Tpng > tfgraph.png
   ```
 
@@ -139,115 +139,38 @@ must already exist; the state-access helper does not create it.
 
   ```sh
   terraform -chdir=infra/aws/terraform/development apply development.tfplan
+
+  # Review deployed resources
+  terraform -chdir=infra/aws/terraform/development state list
   ```
 
 - The backend uses [native S3 locking](https://developer.hashicorp.com/terraform/language/backend/s3).
 
 ### Grant state access with the AWS CLI
 
-Use [`scripts/grant_terraform_state_access.sh`](../../../scripts/grant_terraform_state_access.sh)
-to add or update an inline policy on an existing deployment IAM role or user.
-Before running it:
+**AWS account root users can skip this step; this helper grants permissions to IAM users or roles.** For IAM Identity Center (`AWSReservedSSO_`) roles, manage access through permission sets instead.
 
-1. Install and configure the AWS CLI with a profile authorized to perform
-   `iam:PutRolePolicy` (for a role) or `iam:PutUserPolicy` (for a user) on the
-   target identity. The examples call this profile `admin`; replace it with
-   your actual profile name.
-2. Set `YOUR_STATE_BUCKET` to the bucket name in your `.s3.tfbackend` file.
-   Supply only the name, without `s3://` or an ARN.
-3. Identify the existing deployment role or user Terraform will use for backend
-   access. Supply its IAM name, not its ARN or an STS session ARN.
-4. Run the appropriate command below from the repository directory. Grant
-   bootstrap access before migrating bootstrap state, and development access
-   before initializing the development backend.
+For an existing deployment IAM user or role, run the helper before initializing the development backend or migrating bootstrap state:
 
-To identify your deployment user or role, run this with the profile Terraform
-will use for backend access (replace `YOUR_DEPLOYMENT_PROFILE`):
+```sh
+AWS_PROFILE=YOUR_ADMIN_PROFILE bash scripts/grant_terraform_state_access.sh \
+  YOUR_STATE_BUCKET development role YOUR_DEPLOYMENT_ROLE
+```
+
+- Use the bucket name from `.s3.tfbackend`, without `s3://`.
+- Replace `development` with `bootstrap` for bootstrap state.
+- For an IAM user, replace `role YOUR_DEPLOYMENT_ROLE` with `user YOUR_DEPLOYMENT_USER`. Supply names, not ARNs.
+- The admin profile needs `iam:PutRolePolicy` or `iam:PutUserPolicy`.
+
+Unsure which identity Terraform uses? Run:
 
 ```sh
 aws sts get-caller-identity --profile YOUR_DEPLOYMENT_PROFILE
 ```
 
-For example, an IAM user might return:
+The helper immediately grants access to the selected state and lock files. It assumes a same-account bucket, the default Terraform workspace, and the documented state keys; it does not grant infrastructure deployment permissions or override explicit denies.
 
-```json
-{
-  "UserId": "AIDAEXAMPLEUSERID",
-  "Account": "123456789012",
-  "Arn": "arn:aws:iam::123456789012:user/alice"
-}
-```
-
-Use the returned `Arn` to choose the helper arguments:
-
-| Example ARN | Helper arguments |
-|---|---|
-| `arn:aws:iam::123456789012:user/alice` | `development user alice` |
-| `arn:aws:sts::123456789012:assumed-role/MyRole/session` | `development role MyRole` |
-| `arn:aws:iam::123456789012:root` | Skip this helper for the account root user; it does not need this IAM policy. |
-| Assumed role whose name starts with `AWSReservedSSO_` | Manage access through IAM Identity Center permission sets instead of this helper. |
-
-The AWS account root user is not an IAM user named `root`. Passing `user root`
-asks IAM to attach a policy to a literal IAM user with that name and returns
-`NoSuchEntity` if that user does not exist. Passing `user
-arn:aws:iam::123456789012:root` is also invalid because the helper accepts IAM
-names, not ARNs. To grant access to a separate deployment identity, supply that
-existing IAM user's or role's name.
-
-For example, if your deployment profile uses `alice` and your backend bucket is
-`example-terraform-state-123456789012`, grant access with:
-
-```sh
-AWS_PROFILE=admin bash scripts/grant_terraform_state_access.sh \
-  example-terraform-state-123456789012 development user alice
-```
-
-Replace the example bucket and profile with your actual values. Here, `admin`
-authorizes the IAM change and `alice` receives state access. `TerraformBootstrap`,
-`TerraformDevelopment`, and `YOUR_DEPLOYMENT_USER` below are example names to
-replace with existing identities; neither these Terraform roots nor the helper
-creates those deployment identities.
-
-The arguments are `BUCKET bootstrap|development role|user IDENTITY_NAME`:
-
-```sh
-# Replace the profile, bucket and deployment identity names.
-AWS_PROFILE=admin bash scripts/grant_terraform_state_access.sh \
-  YOUR_STATE_BUCKET bootstrap role TerraformBootstrap
-
-AWS_PROFILE=admin bash scripts/grant_terraform_state_access.sh \
-  YOUR_STATE_BUCKET development role TerraformDevelopment
-
-# Alternatively, grant development state access to an IAM user.
-AWS_PROFILE=admin bash scripts/grant_terraform_state_access.sh \
-  YOUR_STATE_BUCKET development user YOUR_DEPLOYMENT_USER
-```
-
-The profile authorizes the IAM change; the named role or user receives the policy.
-The script immediately applies the policy in the credentials' account. Repeating
-the same command replaces the same inline policy, named
-`TerraformState-<bucket>-<bootstrap|development>`.
-
-| Resource | Granted permissions |
-|---|---|
-| State bucket | `s3:ListBucket` |
-| `<root>/terraform.tfstate` | `s3:GetObject`, `s3:PutObject` |
-| `<root>/terraform.tfstate.tflock` | `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject` |
-
-Here, `<root>` is `bootstrap` or `development`. An S3 key is an object's name
-inside the bucket. The `.tflock` object prevents concurrent Terraform operations
-from modifying the same state. Terraform creates it when acquiring the lock
-and deletes it when releasing the lock; do not create it yourself.
-
-After the script succeeds, use the deployment identity's credentials to run the
-backend initialization and plan commands above. The `admin` profile used to
-grant permissions does not automatically select Terraform's deployment identity.
-
-This helper assumes the standard AWS partition, a bucket in the same account,
-the `default` Terraform workspace, and the state keys in the backend examples.
-It does not grant infrastructure deployment permissions or override explicit
-denies. For IAM Identity Center roles, manage access through their permission
-sets instead. Bootstrap state access must be granted before remote migration.
+Afterward, run Terraform using the deployment identity’s credentials.
 
 ## Offline policy ingestion
 
@@ -270,32 +193,6 @@ POC parameters, IAM attachment, stable inventory and failure recovery. The
 `ingestion_environment` output supplies all six ingestion settings automatically.
 The POC prefix defaults to `approved/aws_poc/`; the data-source deletion policy is
 `DELETE`. Review the runbook migration note before changing an already-used source.
-
-## Teardown
-
-Stop ingestion and query callers before preparing a destroy plan. Review the plan
-and any retained data before applying it:
-
-```sh
-# Example script to cleanup objects in bucket 
-bash scripts/empty_s3_bucket.sh \
-  bucketname \
-  account_number \
-  --region us-east-1
-
-terraform -chdir=infra/aws/terraform/development plan -destroy -out=teardown.tfplan
-terraform -chdir=infra/aws/terraform/development show teardown.tfplan
-```
-
-Document and vector buckets use `force_destroy = false`. Nonempty buckets may
-prevent destruction; explicitly review and authorize removal of documents,
-object versions, and vector data before emptying them. The old RDS/SQS teardown
-helper does not apply to this foundation and has been removed.
-
-Keep bootstrap and its state bucket until development and any older deployments
-using it have been removed. If bootstrap state is stored in that bucket, migrate
-it back to local state before planning bootstrap destruction. The bootstrap
-bucket uses `force_destroy = true`; destroying it deletes state history as well.
 
 ## Development offline deployment
 
@@ -428,3 +325,29 @@ API access-log filters count 401/403 responses, including pre-Lambda rejections.
 Native API/Lambda metrics supply request counts, errors, latency and throttles.
 The dashboard includes these and custom metrics. Missing custom metrics mean no
 matching events have arrived, not proof of zero failures. Alarms remain out of scope.
+
+## Teardown
+
+Stop ingestion and query callers before preparing a destroy plan. Review the plan
+and any retained data before applying it:
+
+```sh
+# Example script to cleanup objects in bucket 
+bash scripts/empty_s3_bucket.sh \
+  bucketname \
+  account_number \
+  --region us-east-1
+
+terraform -chdir=infra/aws/terraform/development plan -destroy -out=teardown.tfplan
+terraform -chdir=infra/aws/terraform/development show teardown.tfplan
+```
+
+Document and vector buckets use `force_destroy = false`. Nonempty buckets may
+prevent destruction; explicitly review and authorize removal of documents,
+object versions, and vector data before emptying them. The old RDS/SQS teardown
+helper does not apply to this foundation and has been removed.
+
+Keep bootstrap and its state bucket until development and any older deployments
+using it have been removed. If bootstrap state is stored in that bucket, migrate
+it back to local state before planning bootstrap destruction. The bootstrap
+bucket uses `force_destroy = true`; destroying it deletes state history as well.

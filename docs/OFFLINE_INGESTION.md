@@ -23,7 +23,10 @@ Terraform backend with read access to the applied development outputs. No model
 API keys or application secrets are needed. Run from the repository root:
 
 ```sh
+# Step 1
 uv sync --locked
+
+# Step 2
 PYTHONPATH=src uv run --locked python scripts/ingest_poc.py \
   --terraform-dir infra/aws/terraform/development
 ```
