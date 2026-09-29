@@ -64,7 +64,7 @@ replacement of a revised document. Retain evidence for these checks separately
 from the ingestion report. A successful ingestion job does not prove retrieval
 correctness or isolation.
 
-Follow the [step-by-step manual index validation runbook](OFFLINE_INDEX_VALIDATION.md)
+Follow the [step-by-step offline RAG evaluation runbook](OFFLINE_RAG_EVALUATION.md)
 for commands, expected results, isolation checks, and document replacement.
 An automated index-validation command remains
 [pending](../PHASE_1_PENDING_WORK.md#offline-ingestion-and-validation-services).

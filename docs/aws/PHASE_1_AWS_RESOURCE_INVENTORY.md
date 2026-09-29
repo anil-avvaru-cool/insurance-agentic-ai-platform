@@ -202,6 +202,15 @@ Initial signals to collect:
 
 Application and CLI code must emit these events; provisioning log groups or a dashboard does not create telemetry. Avoid full policy text, questions, tokens, and credentials in logs. Avoid request IDs or user identities as metric dimensions. The ingestion CLI must exit unsuccessfully on failures or timeouts and retain a reviewable run report. Citation correctness requires evaluation, not just a citation-presence metric.
 
+Optional evaluation evidence capture is implemented, with deployed verification pending.
+`evaluation_capture.tf` defines a dedicated S3 bucket, public-access block, ownership
+controls, encryption, TLS/read policy, retention, and a scoped Lambda write policy.
+These seven resources are created only when both query API and capture are enabled.
+The online runner's `--capture-evidence` option saves the verified artifact in its
+report. No evaluation service role or judge job is provisioned yet. See the
+[capture workflow](ONLINE_RAG_EVALUATION.md#exact-evidence-capture-for-judge-evaluation)
+and [judge implementation plan](BEDROCK_RAG_JUDGE_IMPLEMENTATION_PLAN.md).
+
 ## 5. Required configuration and artifacts that are not separate infrastructure
 
 | Item | Category | Purpose |
@@ -245,7 +254,7 @@ These resources implement the Phase 1 workloads and do **not** add to the Terraf
 | [test_journey.py](../../tests/integration/test_journey.py) | Local FastAPI `TestClient`, temporary SQLite stores, synthetic core and identities | Existing claims-intake/service integration regression suite, including ownership and restart behavior. It does not exercise the Phase 1 Lambda/API Gateway/Knowledge Base path and cannot satisfy Phase 1 deployed acceptance. |
 | [phase1.tftest.hcl](../../infra/aws/terraform/development/tests/phase1.tftest.hcl) and [foundation.tftest.hcl](../../infra/aws/terraform/development/tests/foundation.tftest.hcl) | Terraform with mocked providers | Validate infrastructure configuration and deployment gates; do not prove AWS resource readiness or workload behavior. |
 | Phase 1 live retrieval and replacement checks | AWS; required, dedicated runner pending | Retrieve all four documents with correct sources and owner/LOB filters, then revise and reingest a policy and verify new content is returned and superseded content is absent. Preserve a reviewable validation report before enabling queries. |
-| [test_online_rag.py](../../scripts/test_online_rag.py) | Deployed AWS API; runner implemented, live execution pending | Runs exactly one fixture selected by required `--case-id` per invocation, using the operator's AWS credentials for SigV4 signing. Checks response shape, request IDs, citations, expected amounts, and controlled insufficient-information behavior for the selected case. Test both customers and unsupported questions through separate invocations. Saves responses and request IDs. Missing/invalid-signature and invalid customer/question/LOB checks are not run. Another-principal verification requires separate credentials and is recorded as not run. Human answer/citation review, authentication-negative and invalid-input checks, replacement checks, controlled backend failures, and CloudWatch evidence remain required. See [online RAG testing](ONLINE_RAG_TESTING.md). |
+| [test_online_rag.py](../../scripts/test_online_rag.py) | Deployed AWS API; runner implemented, live execution pending | Runs exactly one fixture selected by required `--case-id` per invocation, using the operator's AWS credentials for SigV4 signing. Checks response shape, request IDs, citations, expected amounts, and controlled insufficient-information behavior for the selected case. Test both customers and unsupported questions through separate invocations. Saves responses and request IDs. Missing/invalid-signature and invalid customer/question/LOB checks are not run. Another-principal verification requires separate credentials and is recorded as not run. Human answer/citation review, authentication-negative and invalid-input checks, replacement checks, controlled backend failures, and CloudWatch evidence remain required. See [online RAG evaluation](ONLINE_RAG_EVALUATION.md). |
 
 Run these commands from the repository root with dependencies installed using `uv sync --locked`:
 

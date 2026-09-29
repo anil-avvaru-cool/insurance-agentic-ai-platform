@@ -76,13 +76,13 @@ class OfflineIngestionTests(unittest.TestCase):
     def test_validation_failure_performs_no_aws_writes(self):
         for failure in ('stale', 'missing', 'invalid_pdf'):
             with self.subTest(failure=failure):
-                path = self.root / 'auto_user_1_v1.pdf.metadata.json'
+                path = self.root / 'auto_user_1_v2.pdf.metadata.json'
                 if failure == 'stale':
                     path.write_text('{}')
                 elif failure == 'missing':
                     path.unlink()
                 else:
-                    (self.root / 'auto_user_1_v1.pdf').write_bytes(b'not a PDF')
+                    (self.root / 'auto_user_1_v2.pdf').write_bytes(b'not a PDF')
                 with self.assertRaises(Exception):
                     self.run_pipeline()
                 self.s3.put_object.assert_not_called()
@@ -186,8 +186,9 @@ class OfflineIngestionTests(unittest.TestCase):
         old = self.root / (item['metadata']['document_id'] + '.pdf')
         old.unlink()
         old.with_name(old.name + '.metadata.json').unlink()
-        item['metadata']['version'] = '2'
-        item['metadata']['document_id'] = 'auto_user_1_v2'
+        next_version = str(int(item['metadata']['version']) + 1)
+        item['metadata']['version'] = next_version
+        item['metadata']['document_id'] = 'auto_user_1_v' + next_version
         (self.root / 'documents.json').write_text(json.dumps(metadata))
         with patch.object(generate_poc_policies, 'ROOT', self.root):
             generate_poc_policies.main()
@@ -196,7 +197,7 @@ class OfflineIngestionTests(unittest.TestCase):
         second = snapshot(self.root)
         self.assertEqual(set(first), set(second))
         self.assertNotEqual(first['POC_AUTO_001.pdf'], second['POC_AUTO_001.pdf'])
-        self.assertEqual(json.loads(second['POC_AUTO_001.pdf.metadata.json'])['metadataAttributes']['version'], '2')
+        self.assertEqual(json.loads(second['POC_AUTO_001.pdf.metadata.json'])['metadataAttributes']['version'], next_version)
 
     def test_unknown_remote_inventory_is_never_deleted_or_synced(self):
         self.s3.get_paginator.return_value.paginate.return_value = [

@@ -82,6 +82,12 @@ resource "aws_lambda_function" "query" {
       MODEL_TEMPERATURE           = "0"
       KNOWLEDGE_RESULT_COUNT      = "5"
       QUERY_DEADLINE_SECONDS      = tostring(var.query_timeout_seconds - 2)
+      QUERY_MAX_PASSAGE_CHARS     = tostring(var.query_max_passage_chars)
+      QUERY_MAX_CONTEXT_CHARS     = tostring(var.query_max_context_chars)
+      QUERY_CAPTURE_ENABLED       = tostring(var.enable_evaluation_capture)
+      QUERY_CAPTURE_BUCKET        = var.enable_evaluation_capture ? aws_s3_bucket.evaluation_capture[0].id : ""
+      QUERY_CAPTURE_PREFIX        = local.capture_prefix
+      QUERY_DEPLOYMENT_ID         = try(filebase64sha256(var.query_lambda_zip), "")
     }
   }
   lifecycle {
@@ -98,7 +104,9 @@ resource "aws_lambda_function" "query" {
       error_message = "Supply the approved operator's exact IAM ARN in this account."
     }
   }
-  depends_on = [aws_iam_role_policy.query]
+  depends_on = [aws_iam_role_policy.query, aws_iam_role_policy.evaluation_capture,
+    aws_s3_bucket_public_access_block.evaluation_capture, aws_s3_bucket_policy.evaluation_capture,
+  aws_s3_bucket_server_side_encryption_configuration.evaluation_capture]
 }
 resource "aws_api_gateway_rest_api" "query" {
   count = local.query_count

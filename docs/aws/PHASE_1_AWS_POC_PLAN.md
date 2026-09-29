@@ -18,6 +18,7 @@ Deploy a small AWS proof of concept that answers policy coverage questions from 
 - API Gateway and Lambda query API.
 - Terraform bootstrap, infrastructure provisioning, and API/Lambda deployment.
 - Observability for ingestion, queries, and answer quality.
+- Small, manually triggered Amazon Bedrock RAG evaluations using an LLM as judge, with six fixed scenarios and an explicit evaluation budget.
 - End-to-end testing with a predefined set of questions.
 
 ## Resource inventory
@@ -128,7 +129,7 @@ Begin Terraform work alongside pipeline development. Offline infrastructure is a
 2. Provision the offline infrastructure: S3 document storage, knowledge base, S3 data source, vector index, required permissions, and ingestion observability, using step 4's indexing configuration. Reuse the existing development Terraform resources where appropriate.
 3. Run the step 3 command to upload documents and metadata and complete ingestion; perform step 4's retrieval and owner-and-LOB filter validation.
 4. Provision operator-only IAM API authentication, synthetic customer selection, online permissions, and query observability; package and deploy the Lambda application and API from steps 5 and 6. Enable online queries only after indexing validation passes.
-5. Run smoke tests against the authenticated deployed API, followed by step 9's end-to-end checks.
+5. Run smoke tests against the authenticated deployed API, followed by step 10's end-to-end checks.
 
 Keep environment-specific configuration outside application code.
 
@@ -157,13 +158,34 @@ Document a repeatable teardown procedure for the POC resources, identifying any 
 - Avoid logging full policy documents or user questions by default.
 - Provision observability resources through Terraform.
 
-#### Answer quality
+### 9. Bedrock RAG LLM-as-judge evaluation
 
 - Evaluate answer accuracy and citation correctness against the predefined questions.
 - Treat citation presence as an operational signal; verify correctness separately in evaluation.
 
-### 9. Test end to end
+- Use an Amazon Bedrock retrieve-and-generate RAG evaluation job with captured pipeline responses and retrieved passages (bring your own inference response data). Evaluate the actual owner-and-LOB-filtered pipeline output against the expected answers and supporting passages, rather than generating a separate answer for evaluation. See [Bedrock retrieve-and-generate evaluations](https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-evaluation-create-randg.html).
+- Use the six fixed scenarios in step 10 as a small quality baseline, not statistically strong evidence of overall accuracy. Reuse the predefined question fixtures where possible.
+- Select one supported evaluator model in the configured AWS region and only the correctness and faithfulness metrics. Correctness compares answers with reference answers; faithfulness checks whether answers are grounded in the retrieved content.
+- Keep evaluation outside the online request path. Prepare the required dataset, S3 input/output locations, and least-privilege evaluation permissions before submitting a job; provision any new infrastructure through Terraform.
+- Limit the baseline to one manually triggered job over six captured responses. Bound retrieved context and generated answer lengths before capture while retaining the evidence needed to assess each answer. Do not schedule evaluations or automatically retry or rerun jobs.
+- Require a configured evaluation budget and a conservative pre-run cost estimate using the selected model's current pricing, dataset size, selected metrics, and token allowances. Include pipeline capture costs when new answers are needed. Do not submit a job if the budget is unset or the estimate exceeds it; this estimate is a submission gate, not a guaranteed AWS billing cap. Count any explicitly requested reruns against the remaining budget.
+- Retain scenario IDs, request IDs, expected answers and passages, captured answers and retrieval evidence, evaluation job ID/status, evaluator model, metric configuration, per-scenario scores, available judge explanations, token usage where available, and estimated cost in a reviewable report. Store evaluation artifacts separately from routine application logs.
+- Manually review all six results against the policy passages, record pass/fail and reasons for each scenario, and investigate judge disagreements. Judge scores supplement deterministic owner/LOB isolation and citation checks and cannot override failures in those checks.
 
+### 10. Test end to end
+
+- Capture and evaluate the following six fixed LLM-as-judge scenarios after the deployed pipeline passes retrieval validation. For each case, specify the selected owner and LOB, expected answer or insufficient-information behavior, allowed document IDs, and supporting passages. These six cases supplement the broader checks below.
+
+| Scenario | Selected owner / LOB | Expected behavior |
+|---|---|---|
+| Auto deductible, User 1 | User 1 / Auto | Return User 1's deductible with a supporting citation. |
+| Same Auto deductible question, User 2 | User 2 / Auto | Return User 2's deliberately different deductible with a supporting citation. |
+| Property coverage question, User 1 | User 1 / Property | Explain a covered item and applicable limit from User 1's policy. |
+| Property exclusion question, User 2 | User 2 / Property | Explain an exclusion from User 2's policy with a supporting citation. |
+| Unsupported question | User 1 / Auto | Return insufficient information for a detail absent from the selected policy. |
+| Other-owner policy request in question text | User 1 / Auto | Do not disclose User 2's policy details; keep retrieval and citations within User 1's Auto policy and state that the requested information is unsupported. |
+
+- Run the budget-gated evaluation from step 9 once for the baseline and retain its report and manual review. Resolve failed cases before completion; any new evaluation run must fit the remaining budget.
 - Verify all four documents are indexed and retrievable with the expected metadata.
 - Update a document and its metadata, re-run ingestion, and verify retrieval reflects the new version.
 - Check supported questions across all four documents.
@@ -184,6 +206,7 @@ Document a repeatable teardown procedure for the POC resources, identifying any 
 - The deployed API permits only the configured AWS operator and rejects missing/invalid signatures and other principals. It validates the explicitly selected synthetic customer.
 - Isolation tests confirm that answers and citations contain only the selected synthetic customer’s selected LOB content.
 - Unsupported questions produce an insufficient-information response.
+- The six-scenario Bedrock LLM-as-judge baseline completes within the configured pre-run budget gate, with a retained report of scores, available explanations, configuration, and estimated cost. Manual review passes all six scenarios, and deterministic isolation and citation checks pass independently; an average judge score alone does not establish completion.
 - Terraform supports bootstrap, infrastructure provisioning, and API/Lambda deployment.
 - CloudWatch dashboards show ingestion and query activity.
 - A controlled failure demonstrates that logs and metrics expose failures, and failed ingestion exits unsuccessfully with a reviewable run report.

@@ -27,3 +27,10 @@ index_validation_passed = false
 # query_lambda_handler = "query.handler"
 query_timeout_seconds = 28
 query_max_tokens = 512
+
+# Optional exact evidence capture for the existing operator-only query API.
+# Rebuild the query ZIP before enabling capture. This does not create judge jobs.
+enable_evaluation_capture = false
+evaluation_capture_retention_days = 30
+query_max_passage_chars = 6000
+query_max_context_chars = 24000

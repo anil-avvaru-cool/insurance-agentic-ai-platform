@@ -1,11 +1,11 @@
-# Verify RAG logs and metrics in CloudWatch
+# CloudWatch RAG evaluation metrics
 
 Use this runbook after deploying the query API to verify online RAG telemetry.
 It is a manual procedure, not evidence that live verification has passed.
 
 ## Offline validation and the telemetry gap
 
-[Offline index validation](OFFLINE_INDEX_VALIDATION.md) calls Bedrock directly,
+[Offline RAG evaluation](OFFLINE_RAG_EVALUATION.md) calls Bedrock directly,
 bypassing API Gateway and the query Lambda. It saves evidence locally under
 `validation_reports/` and does not publish CloudWatch events. The ingestion CLI
 also writes local reports; it does not yet publish its terminal events to
@@ -59,7 +59,7 @@ separate authorized identity may inspect CloudWatch.
 ## 2. Generate and retain an online query
 
 Configure `.env` and operator credentials as described in
-[online RAG testing](ONLINE_RAG_TESTING.md), then run one case:
+[online RAG evaluation](ONLINE_RAG_EVALUATION.md), then run one case:
 
 ```bash
 uv run --locked --env-file .env python scripts/test_online_rag.py \

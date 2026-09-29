@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "case_ids": [
+    "auto_user_1_v2_collision_deductible",
+    "auto_user_2_v1_collision_deductible",
+    "property_user_1_v1_building_limit",
+    "property_user_2_v1_flood",
+    "auto_user_1_v2_unsupported_1",
+    "auto_user_1_v2_other_owner"
+  ]
+}

@@ -12,7 +12,7 @@ from scripts.prepare_poc_metadata import ROOT, prepare
 class MetadataTests(unittest.TestCase):
     def setUp(self):
         self.expected = json.loads((ROOT / 'documents.json').read_text())[0]['metadata']
-        self.text = parse_pdf(ROOT / 'auto_user_1_v1.pdf')
+        self.text = parse_pdf(ROOT / 'auto_user_1_v2.pdf')
 
     def test_real_pdfs_and_checked_in_sidecars(self):
         result = prepare(ROOT, check=True)
@@ -62,14 +62,14 @@ class MetadataTests(unittest.TestCase):
                 root = Path(directory) / 'corpus'
                 shutil.copytree(ROOT, root)
                 if failure == 'missing':
-                    (root / 'auto_user_1_v1.pdf').unlink()
+                    (root / 'auto_user_1_v2.pdf').unlink()
                 elif failure == 'duplicate':
                     documents = json.loads((root / 'documents.json').read_text())
                     documents.append(documents[0])
                     (root / 'documents.json').write_text(json.dumps(documents))
                 elif failure == 'extra':
-                    shutil.copy(root / 'auto_user_1_v1.pdf', root / 'unexpected.pdf')
+                    shutil.copy(root / 'auto_user_1_v2.pdf', root / 'unexpected.pdf')
                 else:
-                    (root / 'auto_user_1_v1.pdf.metadata.json').write_text('{}')
+                    (root / 'auto_user_1_v2.pdf.metadata.json').write_text('{}')
                 with self.assertRaises(ValueError):
                     prepare(root, check=True)

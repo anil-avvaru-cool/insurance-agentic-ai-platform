@@ -1,10 +1,12 @@
 mock_provider "aws" {}
 variables {
-  aws_region     = "us-east-1"
-  aws_account_id = "123456789012"
-  project_name   = "insurance"
-  environment    = "development"
-  owner          = "test"
+  aws_region                = "us-east-1"
+  aws_account_id            = "123456789012"
+  project_name              = "insurance"
+  environment               = "development"
+  owner                     = "test"
+  enable_query_api          = false
+  enable_evaluation_capture = false
 }
 run "bedrock_foundation" {
   command = plan

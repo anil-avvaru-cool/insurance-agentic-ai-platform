@@ -1,4 +1,4 @@
-# Offline index validation
+# Offline RAG evaluation
 
 Use this manual procedure after a successful [offline ingestion](OFFLINE_INGESTION.md).
 Keep the query API disabled while checking retrieval, source references, owner/LOB
@@ -264,5 +264,5 @@ This is an operator attestation; Terraform does not execute these checks.
 Continue with [query deployment](../../infra/aws/terraform/README.md#phase-1-query-deployment).
 This manual runbook does not implement automated validation or CloudWatch event
 publication; those remain separate work.
-See [CloudWatch RAG verification](CLOUDWATCH_RAG_VERIFICATION.md) for the offline
+See [CloudWatch RAG evaluation metrics](CLOUDWATCH_RAG_EVAL_METRICS.md) for the offline
 telemetry gap and the log/metric checks to perform after deploying the query API.

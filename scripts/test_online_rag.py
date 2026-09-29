@@ -1,5 +1,6 @@
-"""Opt-in live Phase 1 API checks; see docs/aws/ONLINE_RAG_TESTING.md."""
+"""Opt-in live Phase 1 API checks; see docs/aws/ONLINE_RAG_EVALUATION.md."""
 import argparse
+import hashlib
 from datetime import datetime, timezone
 import json
 import os
@@ -71,13 +72,41 @@ def check_answer(case, body):
     return errors
 
 
-def scenarios(fixtures):
+def scenarios(fixtures, capture_evidence=False):
     for case in fixtures:
         payload = {"question": case["question"], "lob": case["lob"], "owner_id": case["owner_id"]}
+        if capture_evidence:
+            payload["capture_evidence"] = True
         yield case["case_id"], "signed", payload, 200, case
 
 
-def run(client, endpoint, cases, interval, signer):
+def read_capture(storage, body, payload, bucket, prefix):
+    """Fetch only the configured destination and bind evidence to this API result."""
+    descriptor = body.get("evaluation_capture", {})
+    request_id = body["request_id"]
+    key = prefix + hashlib.sha256(request_id.encode()).hexdigest() + ".json"
+    if descriptor.get("bucket") != bucket or descriptor.get("key") != key:
+        raise ValueError("capture destination mismatch")
+    stream = storage.get_object(Bucket=bucket, Key=key)["Body"]
+    try:
+        encoded = stream.read(2_000_001)
+    finally:
+        stream.close()
+    if len(encoded) > 2_000_000 or hashlib.sha256(encoded).hexdigest() != descriptor.get("sha256"):
+        raise ValueError("capture size or hash mismatch")
+    artifact = json.loads(encoded)
+    expected_response = {key: body[key] for key in ("request_id", "answer", "citations")}
+    expected_request = {key: payload[key] for key in ("question", "owner_id", "lob")}
+    if artifact.get("schema_version") != 1 or artifact.get("response") != expected_response or artifact.get("request") != expected_request or artifact.get("request_id") != request_id:
+        raise ValueError("capture does not match request and response")
+    for result in artifact["retrieval_results"]:
+        metadata = result.get("metadata", {})
+        if metadata.get("owner_id") != payload["owner_id"] or metadata.get("lob") != payload["lob"]:
+            raise ValueError("capture isolation mismatch")
+    return artifact
+
+
+def run(client, endpoint, cases, interval, signer, capture_storage=None, capture_bucket=None, capture_prefix=None):
     results = []
     for index, (name, auth_mode, payload, expected_status, fixture) in enumerate(cases):
         if index:
@@ -102,6 +131,15 @@ def run(client, endpoint, cases, interval, signer):
                 body = None
                 errors.append("response is not JSON")
             result["response"] = body
+            if payload.get("capture_evidence") and response.status_code == 200:
+                try:
+                    result["evaluation_evidence"] = read_capture(capture_storage, body, payload, capture_bucket, capture_prefix)
+                    allowed = fixture["allowed_document_ids"]
+                    if any(item.get("metadata", {}).get("document_id") not in allowed
+                           for item in result["evaluation_evidence"]["retrieval_results"]):
+                        errors.append("captured retrieval outside allowed documents")
+                except Exception as error:
+                    errors.append("capture verification failed: " + type(error).__name__)
             if fixture:
                 result["expected_answer"] = fixture["expected_answer"]
                 result["supporting_passages"] = fixture["supporting_passages"]
@@ -124,13 +162,21 @@ def main(argv=None):
     parser.add_argument("--fixtures", type=Path, default=ROOT / "tests/fixtures/aws_poc/questions.json")
     parser.add_argument("--case-id", required=True, help="Run exactly one question with this case_id")
     parser.add_argument("--report", type=Path)
+    parser.add_argument("--capture-evidence", action="store_true", help="Save exact pipeline evidence; requires capture-enabled deployment and S3 read permission")
     parser.add_argument("--profile", default=os.environ.get("AWS_PROFILE"), help="AWS credential profile")
     parser.add_argument("--region", default=os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION"), help="API AWS region")
     args = parser.parse_args(argv)
-    fixtures = json.loads(args.fixtures.read_text())
+    fixture_bytes = args.fixtures.read_bytes()
+    fixtures = json.loads(fixture_bytes)
     selected = [case for case in fixtures if case["case_id"] == args.case_id]
     if len(selected) != 1:
         parser.error(f"--case-id must match exactly one fixture; found {len(selected)} matches for {args.case_id!r}")
+    capture_bucket = capture_prefix = None
+    if args.capture_evidence:
+        capture_bucket = os.environ["QUERY_CAPTURE_BUCKET"]
+        capture_prefix = os.environ["QUERY_CAPTURE_PREFIX"]
+        if not capture_bucket or not capture_prefix or not capture_prefix.endswith("/"):
+            parser.error("set QUERY_CAPTURE_BUCKET and a nonempty QUERY_CAPTURE_PREFIX ending in /")
     url = urlsplit(args.endpoint or "")
     if url.scheme != "https" or not url.hostname or url.username or url.password or url.query or url.fragment:
         parser.error("provide an HTTPS endpoint without credentials, query string or fragment")
@@ -140,9 +186,12 @@ def main(argv=None):
     if session.get_credentials() is None:
         parser.error("configure AWS credentials for the approved operator")
     signer = RequestSigner(session)
+    storage = session.client("s3") if args.capture_evidence else None
     with httpx.Client(timeout=40, follow_redirects=False) as client:
-        results = run(client, args.endpoint, scenarios(selected), interval=0.6, signer=signer)
+        results = run(client, args.endpoint, scenarios(selected, args.capture_evidence), interval=0.6, signer=signer,
+                      capture_storage=storage, capture_bucket=capture_bucket, capture_prefix=capture_prefix)
     report = {
+        "fixture_sha256": hashlib.sha256(fixture_bytes).hexdigest(),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "automated_checks_passed": all(item["passed"] for item in results),
         "semantic_review_required": True,

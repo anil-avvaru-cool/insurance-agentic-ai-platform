@@ -1,4 +1,4 @@
-# Live online RAG testing
+# Online RAG evaluation
 
 Run [test_online_rag.py](../../scripts/test_online_rag.py) against the deployed Phase 1 HTTPS `/poc/query` endpoint. This exercises API Gateway IAM authentication, the query Lambda, Bedrock Knowledge Base retrieval, and answer generation. Requests invoke paid AWS services. It does not upload or change policies.
 
@@ -18,9 +18,9 @@ AWS_DEFAULT_REGION=us-east-1
 From the repository root:
 
 ```sh
-uv run --locked --env-file .env python scripts/test_online_rag.py --case-id auto_user_1_v1_comprehensive_deductible
+uv run --locked --env-file .env python scripts/test_online_rag.py --case-id auto_user_1_v2_comprehensive_deductible
 # Alternatively, select an existing profile explicitly:
-uv run --locked --env-file .env python scripts/test_online_rag.py --case-id auto_user_1_v1_comprehensive_deductible --profile your-profile --region us-east-1
+uv run --locked --env-file .env python scripts/test_online_rag.py --case-id auto_user_1_v2_comprehensive_deductible --profile your-profile --region us-east-1
 ```
 
 The runner uses boto3's credential chain and signs each request with AWS Signature Version 4 for `execute-api`, including session tokens when applicable. It obtains current credentials for each signed request. The operator must have permission to invoke the configured API. Requests explicitly select one synthetic customer:
@@ -37,7 +37,64 @@ Reports are written to gitignored `online_rag_reports/<unique-id>.json`; use `--
 
 Review each answer against the expected answer and supporting passages, including negation, limits, exclusions, and whether each citation actually supports the answer. Monetary matching alone is not semantic evaluation. Use request IDs to verify CloudWatch events separately. Replacement checks, injected backend failures and CloudWatch verification are outside this runner.
 
-Follow [CloudWatch RAG verification](CLOUDWATCH_RAG_VERIFICATION.md) to correlate
+Follow [CloudWatch RAG evaluation metrics](CLOUDWATCH_RAG_EVAL_METRICS.md) to correlate
 request IDs with API/Lambda logs, inspect metrics, and retain telemetry evidence.
 
 For a direct Knowledge Base retrieval diagnostic without deploying the API, `scripts/bedrock_smoke.py retrieve --text "..."` remains available; it does not validate customer/LOB isolation or the authenticated online path.
+
+## Exact evidence capture for judge evaluation
+
+Implemented prerequisites; AWS deployment and live capture verification remain pending.
+
+1. Validate the current corpus and the six-case manifest without AWS calls:
+
+   ```sh
+   uv run --locked python scripts/validate_judge_baseline.py
+   ```
+
+   This checks all 36 fixtures against the current PDF passages/metadata and prints
+   corpus, fixture, and manifest hashes. User 1 Auto is v2 with a $750 collision
+   deductible. The six baseline IDs are in `tests/fixtures/aws_poc/judge_baseline.json`.
+
+2. Build the Lambda ZIP using `scripts/build_query_lambda.sh`. In development
+   Terraform, set `enable_evaluation_capture = true` alongside the existing query
+   API configuration, review the plan, and deploy. Terraform defines a separate
+   private encrypted capture bucket, 30-day capture retention, Lambda write-only
+   access to `captures/`, and read access for the configured query operator.
+   Capture is disabled by default. The bucket is outside the KB ingestion source.
+
+3. Copy `QUERY_CAPTURE_BUCKET` and `QUERY_CAPTURE_PREFIX` from the
+   `evaluation_capture_environment` Terraform output into `.env`. Run one explicit
+   capture using the existing paid online diagnostic command:
+
+   ```sh
+   uv run --locked --env-file .env python scripts/test_online_rag.py --case-id auto_user_1_v2_collision_deductible --capture-evidence
+   ```
+
+   The signed request includes `capture_evidence: true`. The runner downloads the
+   artifact from the configured bucket/prefix, verifies its hash and request/answer
+   association, checks captured document ownership, and embeds it as
+   `evaluation_evidence` in the local report. A missing or invalid capture fails
+   the check. Ordinary requests retain the original response shape and do not
+   write capture artifacts.
+
+Captures contain original retrieval results, exact generation evidence, evidence
+IDs, final API answer/citations, selected owner/LOB, filters, model settings, token
+usage when available, request ID, and deployment ZIP hash. Full evidence stays out
+of CloudWatch logs. The handler rejects missing/mismatched ownership metadata,
+more than the configured result count, oversized passages/context, and answers
+that hit the output token limit. Limits are configured through
+`query_max_passage_chars` (6,000), `query_max_context_chars` (24,000), and
+`query_max_tokens` (512); evidence is not silently truncated. Capture write failures
+return HTTP 503 with `capture_failed`; the request is not retried automatically.
+
+Retain local reports before the configured S3 retention expires. Disabling capture
+plans removal of the capture resources; the bucket cannot be destroyed while
+nonempty. Archive required evidence and explicitly empty only this dedicated
+bucket before teardown, or retain the resources and stop requesting captures.
+
+This single-case diagnostic does not submit a judge job or implement its budget
+ledger. The budget-gated six-case runner, JSONL export, evaluator permissions,
+submission, and manual-review report remain in the
+[implementation plan](BEDROCK_RAG_JUDGE_IMPLEMENTATION_PLAN.md). Do not treat
+these diagnostic captures as completion of the Phase 1 judge baseline.

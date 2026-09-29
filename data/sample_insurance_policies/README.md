@@ -10,14 +10,14 @@ footer identifies each PDF as a sample document. Dates use ISO format; LOB value
 
 | Owner | Synthetic name | Auto PDF | Property PDF |
 |---|---|---|---|
-| `customer_one` (User 1) | Avery Sample | [Standard Auto](auto_user_1_v1.pdf) | [Standard Property](property_user_1_v1.pdf) |
+| `customer_one` (User 1) | Avery Sample | [Standard Auto](auto_user_1_v2.pdf) | [Standard Property](property_user_1_v1.pdf) |
 | `customer_two` (User 2) | Jordan Example | [Standard Auto](auto_user_2_v1.pdf) | [Standard Property](property_user_2_v1.pdf) |
 
 | Value | User 1 | User 2 |
 |---|---|---|
 | Auto bodily injury liability, per person / accident | $100,000 / $300,000 | $250,000 / $500,000 |
 | Auto property damage liability, per accident | $50,000 | $100,000 |
-| Collision deductible | $500 | $1,000 |
+| Collision deductible | $750 | $1,000 |
 | Comprehensive deductible | $250 | $500 |
 | Building limit, per covered loss | $300,000 | $500,000 |
 | Personal belongings limit, per covered loss | $150,000 | $250,000 |
@@ -54,6 +54,14 @@ review. All passages are on page 1 of the corresponding PDF. `pair_id` groups
 the same question across both owners; deductible and limit answers deliberately
 differ. Unsupported cases have no supporting passage and must return
 `insufficient_information`, without inventing a value.
+
+The six judge scenarios are pinned in
+[judge_baseline.json](../../tests/fixtures/aws_poc/judge_baseline.json).
+Validate the fixtures against current PDF text and print their hashes with:
+
+```sh
+uv run --locked python scripts/validate_judge_baseline.py
+```
 
 A future evaluation runner should simulate or authenticate the case's owner,
 select its LOB, compare answers semantically, and verify every citation against
@@ -106,14 +114,16 @@ filters; extraction itself does not implement retrieval authorization.
 
 ### Metadata review record
 
-On 2026-09-19, the extracted document reference values from all four PDFs were
+On 2026-09-28, the extracted document reference values from all four PDFs were
 compared against the following expected values and `documents.json`. All seven
 fields matched. This was a review of selectable PDF text, not a rendered-page
-visual review. All four have version `1` and effective date `2026-01-01`.
+visual review. User 1 Auto has version `2`; the other three have version `1`.
+All have effective date `2026-01-01`. All source passages were also compared
+with whitespace-normalized PDF text, including the revised $750 collision deductible.
 
 | Document ID | Owner ID | Policy ID | Product name | LOB |
 |---|---|---|---|---|
-| auto_user_1_v1 | customer_one | POC_AUTO_001 | Standard Auto | auto |
+| auto_user_1_v2 | customer_one | POC_AUTO_001 | Standard Auto | auto |
 | property_user_1_v1 | customer_one | POC_PROPERTY_001 | Standard Property | property |
 | auto_user_2_v1 | customer_two | POC_AUTO_002 | Standard Auto | auto |
 | property_user_2_v1 | customer_two | POC_PROPERTY_002 | Standard Property | property |

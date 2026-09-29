@@ -13,7 +13,7 @@ the offline foundation first, then the query API after offline validation passes
 | 2 | **Deploy development offline infrastructure.** Provision document storage, the Bedrock Knowledge Base, vector index, and IAM permissions with `enable_query_api = false`. Attach the ingestion and validation policies to the approved operators. | [Development offline deployment](#development-offline-deployment). |
 | 3 | **Ingest offline documents and verify.** Upload validated PDFs and metadata, complete ingestion, and verify retrieval, source references, document replacement, and owner/LOB filtering. Retain the validation reports. | [Offline ingestion runbook](../../../docs/aws/OFFLINE_INGESTION.md) and [indexing validation requirements](../../../docs/aws/PHASE_1_AWS_POC_PLAN.md#4-configure-and-validate-document-indexing). |
 | 4 | **Deploy the online query API.** After offline validation passes, attest with `index_validation_passed = true`, build the Lambda ZIP, configure the operator identity, and set `enable_query_api = true`. Review and apply a fresh development plan. | [Phase 1 query deployment](#phase-1-query-deployment). |
-| 5 | **Test online RAG queries.** Run question fixtures, review answers and citations, and complete authentication, controlled-failure, and CloudWatch checks. Retain the acceptance evidence. | [Online RAG testing runbook](../../../docs/aws/ONLINE_RAG_TESTING.md), [query acceptance checks](#phase-1-query-deployment), and [completion criteria](../../../docs/aws/PHASE_1_AWS_POC_PLAN.md#completion-criteria). |
+| 5 | **Test online RAG queries.** Run question fixtures, review answers and citations, and complete authentication, controlled-failure, and CloudWatch checks. Retain the acceptance evidence. | [Online RAG evaluation runbook](../../../docs/aws/ONLINE_RAG_EVALUATION.md), [query acceptance checks](#phase-1-query-deployment), and [completion criteria](../../../docs/aws/PHASE_1_AWS_POC_PLAN.md#completion-criteria). |
 
 These steps describe the workflow; they do not establish deployment or acceptance
 status. See [pending work](../../../docs/PHASE_1_PENDING_WORK.md) for remaining
@@ -226,7 +226,7 @@ its validation checks before proceeding.
    (absolute path recommended), `query_lambda_handler`, and `query_operator_arn`.
    Set `enable_query_api = true`, generate a new saved plan, review, and apply it.
    Terraform hashes the ZIP to detect code changes. No placeholder handler is shipped.
-4. Use the [online runner](../../../docs/aws/ONLINE_RAG_TESTING.md) with your existing
+4. Use the [online runner](../../../docs/aws/ONLINE_RAG_EVALUATION.md) with your existing
    AWS credentials. Each invocation requires `--case-id` and runs exactly one
    fixture. Run separate invocations to cover both synthetic customers and LOBs,
    paired owner questions, and unsupported questions. The runner checks response
@@ -351,3 +351,12 @@ Keep bootstrap and its state bucket until development and any older deployments
 using it have been removed. If bootstrap state is stored in that bucket, migrate
 it back to local state before planning bootstrap destruction. The bootstrap
 bucket uses `force_destroy = true`; destroying it deletes state history as well.
+### Optional evaluation evidence capture
+
+`enable_evaluation_capture = true` adds private encrypted S3 capture storage and
+scoped Lambda write/operator read permissions when the query API is enabled.
+Rebuild the query ZIP and deploy its new environment variables together. Capture
+retention defaults to 30 days; `force_destroy` is disabled. See the
+[exact capture workflow](../../../docs/aws/ONLINE_RAG_EVALUATION.md#exact-evidence-capture-for-judge-evaluation)
+for configuration, the single-case command, and teardown. Judge submission and
+its budget gate remain separate implementation work.

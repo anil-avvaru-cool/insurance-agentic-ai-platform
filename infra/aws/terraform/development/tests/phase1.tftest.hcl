@@ -7,16 +7,22 @@ mock_provider "aws" {
   mock_resource "aws_api_gateway_rest_api" { defaults = { execution_arn = "arn:aws:execute-api:us-east-1:123456789012:mock" } }
 }
 variables {
-  aws_region     = "us-east-1"
-  aws_account_id = "123456789012"
-  project_name   = "insurance"
-  environment    = "development"
-  owner          = "test"
+  log_retention_days        = 14
+  aws_region                = "us-east-1"
+  aws_account_id            = "123456789012"
+  project_name              = "insurance"
+  environment               = "development"
+  owner                     = "test"
+  enable_query_api          = false
+  enable_evaluation_capture = false
+  index_validation_passed   = false
+  query_operator_arn        = ""
+  query_lambda_zip          = ""
 }
 run "offline_monitoring" {
   command = plan
   assert {
-    condition     = length(aws_lambda_function.query) == 0 && length(aws_api_gateway_stage.query) == 0
+    condition     = length(aws_lambda_function.query) == 0 && length(aws_api_gateway_stage.query) == 0 && length(aws_s3_bucket.evaluation_capture) == 0
     error_message = "Online resources must be opt-in."
   }
   assert {
@@ -98,4 +104,34 @@ run "reject_other_account_operator" {
     query_operator_arn      = "arn:aws:iam::999999999999:user/operator"
   }
   expect_failures = [aws_lambda_function.query]
+}
+run "evaluation_capture" {
+  command = apply
+  variables {
+    enable_query_api          = true
+    enable_evaluation_capture = true
+    index_validation_passed   = true
+    query_lambda_zip          = "tests/phase1.tftest.hcl"
+    query_operator_arn        = "arn:aws:iam::123456789012:user/operator"
+  }
+  assert {
+    condition     = aws_s3_bucket_public_access_block.evaluation_capture[0].block_public_acls && aws_s3_bucket_public_access_block.evaluation_capture[0].block_public_policy && aws_s3_bucket_public_access_block.evaluation_capture[0].ignore_public_acls && aws_s3_bucket_public_access_block.evaluation_capture[0].restrict_public_buckets && !aws_s3_bucket.evaluation_capture[0].force_destroy
+    error_message = "Capture storage must be private and protected from forced deletion."
+  }
+  assert {
+    condition     = one(aws_s3_bucket_server_side_encryption_configuration.evaluation_capture[0].rule).apply_server_side_encryption_by_default[0].sse_algorithm == "AES256" && one(aws_s3_bucket_lifecycle_configuration.evaluation_capture[0].rule).expiration[0].days == 30
+    error_message = "Encrypt captures and configure retention."
+  }
+  assert {
+    condition     = jsondecode(aws_iam_role_policy.evaluation_capture[0].policy).Statement[0].Action == ["s3:PutObject"] && jsondecode(aws_iam_role_policy.evaluation_capture[0].policy).Statement[0].Resource == ["${aws_s3_bucket.evaluation_capture[0].arn}/captures/*"]
+    error_message = "Lambda may only write the capture prefix."
+  }
+  assert {
+    condition     = jsondecode(aws_s3_bucket_policy.evaluation_capture[0].policy).Statement[1].Condition.ArnEquals["aws:PrincipalArn"] == var.query_operator_arn && jsondecode(aws_s3_bucket_policy.evaluation_capture[0].policy).Statement[1].Action == "s3:GetObject" && jsondecode(aws_s3_bucket_policy.evaluation_capture[0].policy).Statement[0].Condition.Bool["aws:SecureTransport"] == "false"
+    error_message = "Grant capture reads to the configured operator and require TLS."
+  }
+  assert {
+    condition     = aws_lambda_function.query[0].environment[0].variables.QUERY_CAPTURE_ENABLED == "true" && aws_lambda_function.query[0].environment[0].variables.QUERY_MAX_CONTEXT_CHARS == "24000" && aws_lambda_function.query[0].environment[0].variables.QUERY_DEPLOYMENT_ID == filebase64sha256(var.query_lambda_zip)
+    error_message = "Pass capture opt-in, evidence limits, and code hash to Lambda."
+  }
 }

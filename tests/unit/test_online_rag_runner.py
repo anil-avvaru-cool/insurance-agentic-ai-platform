@@ -20,8 +20,8 @@ class OnlineRagRunnerTests(TestCase):
         session.get_credentials.return_value = Credentials("test-key", "test-secret", "session-token")
         self.signer = RequestSigner(session)
         self.case = json.loads((ROOT / "tests/fixtures/aws_poc/questions.json").read_text())[0]
-        self.body = {"request_id": "request-1", "answer": "$500 per covered loss.", "citations": [
-            {"document_id": "auto_user_1_v1", "lob": "auto", "source": "policy.pdf", "evidence_id": "E1"}
+        self.body = {"request_id": "request-1", "answer": "$750 per covered loss.", "citations": [
+            {"document_id": "auto_user_1_v2", "lob": "auto", "source": "policy.pdf", "evidence_id": "E1"}
         ]}
 
     def test_good_answer_and_cross_owner_citation(self):
@@ -114,3 +114,37 @@ class OnlineRagRunnerTests(TestCase):
             self.assertEqual(json.loads(requests[0].content)["question"], selected["question"])
             results = json.loads(report.read_text())["results"]
             self.assertEqual([item["case_id"] for item in results], [selected["case_id"]])
+
+    def test_capture_round_trip_binds_saved_evidence_to_api_response(self):
+        import hashlib
+        from io import BytesIO
+        from scripts.test_online_rag import read_capture
+        payload = list(scenarios([self.case], True))[0][2]
+        artifact = {'schema_version': 1, 'request_id': self.body['request_id'], 'response': self.body,
+                    'request': {k: payload[k] for k in ('question', 'owner_id', 'lob')},
+                    'retrieval_results': [{'metadata': {'owner_id': 'customer_one', 'lob': 'auto', 'document_id': 'auto_user_1_v2'},
+                                           'content': {'text': '$750 deductible'}}]}
+        encoded = json.dumps(artifact).encode()
+        key = 'captures/' + hashlib.sha256(self.body['request_id'].encode()).hexdigest() + '.json'
+        body = {**self.body, 'evaluation_capture': {'bucket': 'evaluation', 'key': key,
+                                                   'sha256': hashlib.sha256(encoded).hexdigest()}}
+        storage = Mock()
+        storage.get_object.side_effect = lambda **kwargs: {'Body': BytesIO(encoded)}
+        with httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, json=body))) as client:
+            result = run(client, 'https://example.test/query', scenarios([self.case], True), 0, self.signer,
+                         storage, 'evaluation', 'captures/')[0]
+        self.assertTrue(result['passed'])
+        self.assertEqual(result['evaluation_evidence'], artifact)
+        storage.get_object.assert_called_once_with(Bucket='evaluation', Key=key)
+        for change in ({'answer': 'Another answer'}, {'request_id': 'other_request'},
+                       {'evaluation_capture': {**body['evaluation_capture'], 'bucket': 'other'}},
+                       {'evaluation_capture': {**body['evaluation_capture'], 'sha256': 'bad'}}):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                read_capture(storage, {**body, **change}, payload, 'evaluation', 'captures/')
+
+    def test_capture_requested_but_missing_is_failed(self):
+        with httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, json=self.body))) as client:
+            result = run(client, 'https://example.test/query', scenarios([self.case], True), 0, self.signer,
+                         Mock(), 'evaluation', 'captures/')[0]
+        self.assertFalse(result['passed'])
+        self.assertIn('capture verification failed: ValueError', result['errors'])
