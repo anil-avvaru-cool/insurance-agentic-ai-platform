@@ -1,6 +1,6 @@
 # Synthetic AWS policy coverage corpus
 
-Implements steps 1 and 2 of [the AWS POC plan](../../docs/PHASE_1_AWS_POC_PLAN.md).
+Implements steps 1 and 2 of [the AWS POC plan](../../docs/aws/PHASE_1_AWS_POC_PLAN.md).
 All identities and policy terms are fictional test data. Each PDF is one page,
 uses a declarations layout with a coverage schedule and policy provisions,
 contains selectable text, and includes consistently labeled metadata in a compact
@@ -123,5 +123,5 @@ against the corresponding PDF's document reference block, correct mismatches,
 and update this review record before ingestion. Automated source comparison
 supplements that review.
 
-The [offline ingestion command](../../docs/OFFLINE_INGESTION.md) implements step 3.
+The [offline ingestion command](../../docs/aws/OFFLINE_INGESTION.md) implements step 3.
 Successful AWS ingestion and step 4 retrieval checks remain deployment acceptance gates.

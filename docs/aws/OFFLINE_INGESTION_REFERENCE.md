@@ -45,7 +45,7 @@ See [AWS vector-store requirements](https://docs.aws.amazon.com/bedrock/latest/u
 
 For environments without Terraform backend/state access, obtain the applied
 deployment values from its operator and set every required value in `.env` using
-[example.env](../example.env). Replace the bucket and ten-character Bedrock ID
+[example.env](../../example.env). Replace the bucket and ten-character Bedrock ID
 placeholders below with actual deployed values:
 
 ```dotenv
@@ -80,12 +80,12 @@ when versioning is suspended, but are not separate current sources for Bedrock
 ingestion. Bedrock syncs source changes incrementally; verify superseded
 content is absent in step 4. See [AWS data-source updates](https://docs.aws.amazon.com/bedrock/latest/userguide/kb-ds-update.html).
 
-To revise a policy, edit [documents.json](../data/sample_insurance_policies/documents.json), regenerate the PDFs, remove the
+To revise a policy, edit [documents.json](../../data/sample_insurance_policies/documents.json), regenerate the PDFs, remove the
 superseded local PDF/sidecar, regenerate sidecars, update question fixtures and
 the metadata review record, then run the same ingestion command. Follow the
-corpus README's [PDF regeneration instructions](../data/sample_insurance_policies/README.md#source-and-regeneration),
-[metadata preparation commands](../data/sample_insurance_policies/README.md#metadata-extraction-and-validation),
-and [review record](../data/sample_insurance_policies/README.md#metadata-review-record).
+corpus README's [PDF regeneration instructions](../../data/sample_insurance_policies/README.md#source-and-regeneration),
+[metadata preparation commands](../../data/sample_insurance_policies/README.md#metadata-extraction-and-validation),
+and [review record](../../data/sample_insurance_policies/README.md#metadata-review-record).
 The current
 allowlist requires exactly four policies, so additions or removal of a policy
 fail before upload and require an explicit code/Terraform inventory review.
@@ -170,5 +170,5 @@ These are local tests using AWS doubles/mocked Terraform providers. The runner's
 JSON report supplies step 3 observability. Terraform defines the ingestion
 CloudWatch log group, metric filters and dashboard, but the CLI still needs a
 CloudWatch log publisher and live delivery verification for step 8. See the
-[telemetry contract](../infra/aws/terraform/README.md#telemetry-contract).
+[telemetry contract](../../infra/aws/terraform/README.md#telemetry-contract).
 Alarms and alert delivery remain outside the current POC scope.

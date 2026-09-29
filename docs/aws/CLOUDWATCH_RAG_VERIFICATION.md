@@ -46,7 +46,7 @@ output contains:
 
 If the query/API log groups are `null`, the query API is disabled. Complete
 offline validation and follow the
-[query deployment procedure](../infra/aws/terraform/README.md#phase-1-query-deployment)
+[query deployment procedure](../../infra/aws/terraform/README.md#phase-1-query-deployment)
 before continuing. Do not enable the API just to inspect offline validation.
 
 Use the same account and region in the CloudWatch console. Reading Terraform
@@ -166,7 +166,7 @@ telemetry verification does not fill the offline event-publication gap.
 
 Implementation references:
 
-- [Metric filters, dashboard, and destinations](../infra/aws/terraform/development/observability.tf)
-- [Query events and failure handling](../src/apps/query_lambda/query.py)
-- [API access-log configuration](../infra/aws/terraform/development/query.tf)
-- [Telemetry contract](../infra/aws/terraform/README.md#telemetry-contract)
+- [Metric filters, dashboard, and destinations](../../infra/aws/terraform/development/observability.tf)
+- [Query events and failure handling](../../src/apps/query_lambda/query.py)
+- [API access-log configuration](../../infra/aws/terraform/development/query.tf)
+- [Telemetry contract](../../infra/aws/terraform/README.md#telemetry-contract)

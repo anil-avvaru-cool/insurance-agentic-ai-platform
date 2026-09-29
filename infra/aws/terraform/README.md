@@ -1,6 +1,6 @@
 # Phase 1 AWS Terraform
 
-These roots define the offline foundation and opt-in query infrastructure described in the [Phase 1 plan](../../../docs/PHASE_1_AWS_POC_PLAN.md).
+These roots define the offline foundation and opt-in query infrastructure described in the [Phase 1 plan](../../../docs/aws/PHASE_1_AWS_POC_PLAN.md).
 
 ## Phase 1 POC high-level steps
 
@@ -11,9 +11,9 @@ the offline foundation first, then the query API after offline validation passes
 |---|---|---|
 | 1 | **Deploy bootstrap infrastructure.** Create the Terraform state bucket, grant state access, and migrate bootstrap state to S3. | [Bootstrap and plan](#bootstrap-and-plan), including [state access](#grant-state-access-with-the-aws-cli). |
 | 2 | **Deploy development offline infrastructure.** Provision document storage, the Bedrock Knowledge Base, vector index, and IAM permissions with `enable_query_api = false`. Attach the ingestion and validation policies to the approved operators. | [Development offline deployment](#development-offline-deployment). |
-| 3 | **Ingest offline documents and verify.** Upload validated PDFs and metadata, complete ingestion, and verify retrieval, source references, document replacement, and owner/LOB filtering. Retain the validation reports. | [Offline ingestion runbook](../../../docs/OFFLINE_INGESTION.md) and [indexing validation requirements](../../../docs/PHASE_1_AWS_POC_PLAN.md#4-configure-and-validate-document-indexing). |
+| 3 | **Ingest offline documents and verify.** Upload validated PDFs and metadata, complete ingestion, and verify retrieval, source references, document replacement, and owner/LOB filtering. Retain the validation reports. | [Offline ingestion runbook](../../../docs/aws/OFFLINE_INGESTION.md) and [indexing validation requirements](../../../docs/aws/PHASE_1_AWS_POC_PLAN.md#4-configure-and-validate-document-indexing). |
 | 4 | **Deploy the online query API.** After offline validation passes, attest with `index_validation_passed = true`, build the Lambda ZIP, configure the operator identity, and set `enable_query_api = true`. Review and apply a fresh development plan. | [Phase 1 query deployment](#phase-1-query-deployment). |
-| 5 | **Test online RAG queries.** Run question fixtures, review answers and citations, and complete authentication, controlled-failure, and CloudWatch checks. Retain the acceptance evidence. | [Online RAG testing runbook](../../../docs/ONLINE_RAG_TESTING.md), [query acceptance checks](#phase-1-query-deployment), and [completion criteria](../../../docs/PHASE_1_AWS_POC_PLAN.md#completion-criteria). |
+| 5 | **Test online RAG queries.** Run question fixtures, review answers and citations, and complete authentication, controlled-failure, and CloudWatch checks. Retain the acceptance evidence. | [Online RAG testing runbook](../../../docs/aws/ONLINE_RAG_TESTING.md), [query acceptance checks](#phase-1-query-deployment), and [completion criteria](../../../docs/aws/PHASE_1_AWS_POC_PLAN.md#completion-criteria). |
 
 These steps describe the workflow; they do not establish deployment or acceptance
 status. See [pending work](../../../docs/PHASE_1_PENDING_WORK.md) for remaining
@@ -188,7 +188,7 @@ Bootstrap state bucket versioning is also suspended for the POC. Existing versio
 remain stored, but future state overwrites do not preserve rollback history.
 Enable versioning in `bootstrap/main.tf` when state recovery history is required.
 
-The [Step 3 runbook](../../../docs/OFFLINE_INGESTION.md) documents the repeatable CLI,
+The [Step 3 runbook](../../../docs/aws/OFFLINE_INGESTION.md) documents the repeatable CLI,
 POC parameters, IAM attachment, stable inventory and failure recovery. The
 `ingestion_environment` output supplies all six ingestion settings automatically.
 The POC prefix defaults to `approved/aws_poc/`; the data-source deletion policy is
@@ -202,7 +202,7 @@ The POC prefix defaults to `approved/aws_poc/`; the data-source deletion policy 
 2. Attach the exported ingestion policy to the ingestion operator and the separate validation
    policy to a trusted validation operator. The latter can retrieve all owners'
    documents for isolation testing; never grant it to API users.
-3. Follow the [offline ingestion runbook](../../../docs/OFFLINE_INGESTION.md)
+3. Follow the [offline ingestion runbook](../../../docs/aws/OFFLINE_INGESTION.md)
    to ingest documents and validate retrieval, source references, document
    replacement, and owner/LOB isolation. Retain the validation reports and keep
    the query API disabled until validation passes.
@@ -226,7 +226,7 @@ its validation checks before proceeding.
    (absolute path recommended), `query_lambda_handler`, and `query_operator_arn`.
    Set `enable_query_api = true`, generate a new saved plan, review, and apply it.
    Terraform hashes the ZIP to detect code changes. No placeholder handler is shipped.
-4. Use the [online runner](../../../docs/ONLINE_RAG_TESTING.md) with your existing
+4. Use the [online runner](../../../docs/aws/ONLINE_RAG_TESTING.md) with your existing
    AWS credentials. Each invocation requires `--case-id` and runs exactly one
    fixture. Run separate invocations to cover both synthetic customers and LOBs,
    paired owner questions, and unsupported questions. The runner checks response

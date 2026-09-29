@@ -3,7 +3,7 @@
 **Status:** Proposed phase-one AWS design. Development Terraform resources are defined and mock validated; no account-backed apply, ingestion, or live retrieval has run.
 **Updated:** September 17, 2026.
 
-This document covers AWS deployment and operation of the bounded customer-service knowledge corpus. The [platform deployment topology](DEPLOYMENT_TOPOLOGY.md) owns shared runtime, network, release, and recovery boundaries. The [Phase 1 guide](PHASE_1_IMPLEMENTATION_GUIDE.md#phase-one-rag) owns answer behavior and evaluation criteria. This document specifies how approved material reaches retrieval and how the service consumes it. The [Azure RAG topology](Azure_RAG_Deployment_topology.md) is a separate proposal; Azure and GCP RAG implementations have not been selected for deployment.
+This document covers AWS deployment and operation of the bounded customer-service knowledge corpus. The [platform deployment topology](../DEPLOYMENT_TOPOLOGY.md) owns shared runtime, network, release, and recovery boundaries. The [Phase 1 guide](../PHASE_1_IMPLEMENTATION_GUIDE.md#phase-one-rag) owns answer behavior and evaluation criteria. This document specifies how approved material reaches retrieval and how the service consumes it. The [Azure RAG topology](../Azure_RAG_Deployment_topology.md) is a separate proposal; Azure and GCP RAG implementations have not been selected for deployment.
 
 ## Placement and ownership
 
@@ -18,7 +18,7 @@ This document covers AWS deployment and operation of the bounded customer-servic
 | Customer evidence | Separate protected evidence storage | Excluded from the shared knowledge data source |
 | Task and workflow state | Application database and LangGraph checkpoint store | Excluded from the knowledge corpus |
 
-The current Terraform defines the development knowledge bucket, vector bucket/index, Knowledge Base, data source, and IAM roles. It does not define a content approval/publishing pipeline, scheduled ingestion, source withdrawal workflow, or production deployment. The local service currently uses a versioned source catalog; the live Knowledge Base retrieval adapter remains deployment work. See [development Bedrock setup](BEDROCK_DEVELOPMENT.md) and [implementation status](PHASE_1_STATUS.md).
+The current Terraform defines the development knowledge bucket, vector bucket/index, Knowledge Base, data source, and IAM roles. It does not define a content approval/publishing pipeline, scheduled ingestion, source withdrawal workflow, or production deployment. The local service currently uses a versioned source catalog; the live Knowledge Base retrieval adapter remains deployment work. See [development Bedrock setup](../BEDROCK_DEVELOPMENT.md) and [implementation status](../PHASE_1_STATUS.md).
 
 ## Publish and ingest
 
@@ -85,7 +85,7 @@ sequenceDiagram
     API-->>Customer: Answer with citations or fallback
 ```
 
-The diagram abbreviates the existing durable outbox and worker path; the [platform topology](DEPLOYMENT_TOPOLOGY.md#async-request-and-response-path) describes it. `Retrieve` supplies passages; generation remains one call through the configured adapter. Persist only the source identifiers, versions, and safe answer data required for audit under the agreed retention policy. Keep raw customer queries and retrieved passages out of unrestricted logs.
+The diagram abbreviates the existing durable outbox and worker path; the [platform topology](../DEPLOYMENT_TOPOLOGY.md#async-request-and-response-path) describes it. `Retrieve` supplies passages; generation remains one call through the configured adapter. Persist only the source identifiers, versions, and safe answer data required for audit under the agreed retention policy. Keep raw customer queries and retrieved passages out of unrestricted logs.
 
 ## Withdrawal, updates, and recovery
 

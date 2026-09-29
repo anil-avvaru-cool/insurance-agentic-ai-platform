@@ -1,4 +1,4 @@
-"""Opt-in live Phase 1 API checks; see docs/ONLINE_RAG_TESTING.md."""
+"""Opt-in live Phase 1 API checks; see docs/aws/ONLINE_RAG_TESTING.md."""
 import argparse
 from datetime import datetime, timezone
 import json

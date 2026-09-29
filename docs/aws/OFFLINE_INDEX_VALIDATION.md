@@ -126,7 +126,7 @@ For every returned chunk, verify:
 
 - `owner_id`, `lob`, and `policy_id` match the case.
 - `document_id`, `version`, `product_name`, and `effective_date` match
-  [documents.json](../data/sample_insurance_policies/documents.json).
+  [documents.json](../../data/sample_insurance_policies/documents.json).
 - The source URI is exactly `s3://<SOURCE_BUCKET>/<SOURCE_PREFIX><POLICY_ID>.pdf`,
   using the values loaded above. The default prefix is `approved/aws_poc/`.
 - The text belongs to that PDF. Across the results, supporting passages contain
@@ -176,7 +176,7 @@ cp -a data/sample_insurance_policies "$EVIDENCE_DIR/original-corpus"
 ```
 
 Edit only the first Auto policy in
-[documents.json](../data/sample_insurance_policies/documents.json):
+[documents.json](../../data/sample_insurance_policies/documents.json):
 
 | Field | Before | After |
 |---|---|---|
@@ -205,7 +205,7 @@ PYTHONPATH=src uv run --locked python scripts/prepare_poc_metadata.py --check
 
 Open the revised PDF and manually compare its deductible and metadata with the
 source JSON and sidecar. Update the corpus's
-[review record](../data/sample_insurance_policies/README.md#metadata-review-record)
+[review record](../../data/sample_insurance_policies/README.md#metadata-review-record)
 and affected question fixtures if retaining this revision.
 
 Using ingestion operator credentials, run the normal ingestion command:
@@ -261,7 +261,7 @@ index_validation_passed = true
 ```
 
 This is an operator attestation; Terraform does not execute these checks.
-Continue with [query deployment](../infra/aws/terraform/README.md#phase-1-query-deployment).
+Continue with [query deployment](../../infra/aws/terraform/README.md#phase-1-query-deployment).
 This manual runbook does not implement automated validation or CloudWatch event
 publication; those remain separate work.
 See [CloudWatch RAG verification](CLOUDWATCH_RAG_VERIFICATION.md) for the offline

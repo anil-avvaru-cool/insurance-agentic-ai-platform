@@ -1,6 +1,6 @@
 # Live online RAG testing
 
-Run [test_online_rag.py](../scripts/test_online_rag.py) against the deployed Phase 1 HTTPS `/poc/query` endpoint. This exercises API Gateway IAM authentication, the query Lambda, Bedrock Knowledge Base retrieval, and answer generation. Requests invoke paid AWS services. It does not upload or change policies.
+Run [test_online_rag.py](../../scripts/test_online_rag.py) against the deployed Phase 1 HTTPS `/poc/query` endpoint. This exercises API Gateway IAM authentication, the query Lambda, Bedrock Knowledge Base retrieval, and answer generation. Requests invoke paid AWS services. It does not upload or change policies.
 
 Prerequisites: the corpus has been ingested and validated, the query API is deployed, and your local AWS credentials identify the configured `query_operator_arn`. No Cognito users, passwords, or JWT tokens are needed. The API resource policy explicitly denies invocation by every other principal, including other identities in the same AWS account. The endpoint is publicly reachable; unauthorized requests are rejected before Lambda. Account administrators who can change these controls can change access.
 

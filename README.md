@@ -1,6 +1,6 @@
 # Insurance agentic AI platform
 
-Start with the [Phase 1 AWS POC plan](docs/PHASE_1_AWS_POC_PLAN.md) and [Terraform setup](infra/aws/terraform/README.md) for the AWS deployment scope and sequence.
+Start with the [Phase 1 AWS POC plan](docs/aws/PHASE_1_AWS_POC_PLAN.md) and [Terraform setup](infra/aws/terraform/README.md) for the AWS deployment scope and sequence.
 
 The [AWS POC policy corpus](data/sample_insurance_policies/README.md) contains four synthetic
 policy PDFs and expected coverage question answers for the AWS coverage POC.
@@ -148,7 +148,7 @@ AWS Bedrock is implemented; Azure and Google Cloud require separate approved ada
 
 ## Offline AWS POC ingestion
 
-See [the ingestion runbook](docs/OFFLINE_INGESTION.md) for the step 3 pipeline.
+See [the ingestion runbook](docs/aws/OFFLINE_INGESTION.md) for the step 3 pipeline.
 After applying the development Terraform changes, run:
 
 ```sh

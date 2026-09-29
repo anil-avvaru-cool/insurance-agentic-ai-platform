@@ -3,7 +3,7 @@
 **Status:** Proposed later-cloud design. No Azure RAG service, embedding deployment, Terraform root, ingestion job, or live retrieval adapter exists in this repository.
 **Updated:** September 18, 2026.
 
-This document sketches an independent Azure implementation of the bounded customer-service knowledge corpus. AWS remains the phase-one deployment target. The [platform deployment topology](DEPLOYMENT_TOPOLOGY.md) owns shared runtime, network, release, and recovery boundaries; the [Phase 1 guide](PHASE_1_IMPLEMENTATION_GUIDE.md#phase-one-rag) defines answer behavior and evaluation criteria. The [AWS RAG topology](AWS_RAG_Deployment_topology.md) records the separate, more developed AWS design. Azure service choices below require a deployment spike before adoption.
+This document sketches an independent Azure implementation of the bounded customer-service knowledge corpus. AWS remains the phase-one deployment target. The [platform deployment topology](DEPLOYMENT_TOPOLOGY.md) owns shared runtime, network, release, and recovery boundaries; the [Phase 1 guide](PHASE_1_IMPLEMENTATION_GUIDE.md#phase-one-rag) defines answer behavior and evaluation criteria. The [AWS RAG topology](aws/AWS_RAG_Deployment_topology.md) records the separate, more developed AWS design. Azure service choices below require a deployment spike before adoption.
 
 ## Proposed placement and ownership
 
