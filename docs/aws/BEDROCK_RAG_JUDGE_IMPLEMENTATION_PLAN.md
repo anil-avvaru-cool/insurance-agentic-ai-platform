@@ -1,113 +1,46 @@
-# Bedrock RAG LLM-as-judge implementation plan
+# Bedrock RAG judge implementation plan
 
-Status: fixture alignment and opt-in exact evidence capture implemented and tested locally; deployment/live capture verification and the budget-gated judge workflow remain pending. No AWS evaluation has been run by this work.
+**Goal:** Run one manually submitted Bedrock evaluation of six deployed API responses using **correctness** and **faithfulness**, within an explicit budget, followed by human review. This covers steps 9 and 10 of the [Phase 1 plan](PHASE_1_AWS_POC_PLAN.md).
 
-Prerequisites now available: all 36 current-version fixtures, an explicit six-case
-manifest, `scripts/validate_judge_baseline.py`, bounded and owner-checked Lambda
-capture, dedicated Terraform storage/permissions, and the online runner's
-`--capture-evidence` option. See the [capture workflow](ONLINE_RAG_EVALUATION.md#exact-evidence-capture-for-judge-evaluation).
-The dedicated six-case runner, shared signing helpers, cost ledger, JSONL export,
-evaluation service role, job lifecycle, and review report below remain planned.
+**Status:** All 36 current-version fixtures, the six-case manifest and validator, opt-in exact evidence capture, and Terraform capture storage/permissions are implemented and tested locally. Local `prepare`, `reserve`, and `export` commands, bounded cost estimation, a concurrent local budget ledger, strict six-case evidence export, SDK-validated job request construction, and human-review manifests are implemented; see the [local runbook](BEDROCK_RAG_JUDGE_LOCAL.md). Deployment/live capture verification, budget-gated six-request capture, the evaluation role, paid job lifecycle/reconciliation, cost settlement, and scored reports remain pending. **No AWS evaluation has been run.**
 
-Implements steps 9 and 10 of [the Phase 1 plan](PHASE_1_AWS_POC_PLAN.md). Deliver one manually submitted Bedrock evaluation of six actual deployed API responses, using correctness and faithfulness, a required budget gate, and recorded human review.
+**AWS evaluation selections:** Use **Bring your own inference responses** as the inference source and **Retrieval and response generation** (retrieve-and-generate) as the evaluation type. These are separate selections: the job scores the six captured API answers and their actual retrieval context using `precomputedRagSourceConfig.retrieveAndGenerateSourceConfig`, as described in the [AWS job configuration](https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-evaluation-create-randg.html).
 
-1. **Align the six scenarios with the current corpus.**
+**POC cost rationale:** Capture each answer once, then supply that evidence to the judge so the evaluation job does not repeat retrieval and answer generation. This also evaluates our deployed API behavior, including owner/LOB filters. The budget still includes the initial six API requests, judge input/output tokens for both metrics (including judge prompt overhead), and supporting AWS costs. Bring-your-own inference avoids duplicate inference costs; judge tokens remain charged at on-demand standard tier rates under [AWS pricing](https://aws.amazon.com/bedrock/pricing/).
 
-   Reuse `tests/fixtures/aws_poc/questions.json` and the explicit six-case baseline manifest in `tests/fixtures/aws_poc/judge_baseline.json`. The following review findings have been resolved:
+## Six baseline cases
 
-   - Corrected the v2 collision reference from $500 to $750 after comparing the PDF and source.
-   - Migrated User 1's Auto fixtures to v2 and removed the obsolete duplicate collision case. Replacement tests now advance from the current version.
-   - Aligned other-owner reference wording with the controlled insufficient-information response; no-disclosure remains an independent requirement.
-   - Refreshed the corpus review record and verified all four PDFs locally. Successful AWS ingestion and retrieval validation for the chosen version remain prerequisites for live capture.
+Use `tests/fixtures/aws_poc/judge_baseline.json` and `scripts/validate_judge_baseline.py`.
 
-   | Baseline scenario | Selected owner / LOB | Reference behavior |
-   |---|---|---|
-   | Collision deductible, User 1 | `customer_one` / `auto` | $750 per covered loss from `auto_user_1_v2` |
-   | Same collision question, User 2 | `customer_two` / `auto` | $1,000 per covered loss from `auto_user_2_v1` |
-   | Building coverage, User 1 | `customer_one` / `property` | Covered causes and $300,000 limit from `property_user_1_v1` |
-   | Flood exclusion, User 2 | `customer_two` / `property` | Flood excluded for building and belongings from `property_user_2_v1` |
-   | Annual Auto premium, User 1 | `customer_one` / `auto` | Controlled insufficient-information response |
-   | Request User 2's deductible, selected User 1 | `customer_one` / `auto` | Controlled insufficient-information response; no other-owner evidence |
+| Case | Selected owner / LOB | Expected behavior |
+|---|---|---|
+| Collision deductible | `customer_one` / `auto` | $750 from `auto_user_1_v2` |
+| Same collision question | `customer_two` / `auto` | $1,000 from `auto_user_2_v1` |
+| Building coverage | `customer_one` / `property` | Covered causes and $300,000 limit |
+| Flood exclusion | `customer_two` / `property` | Flood excluded for building and belongings |
+| Annual Auto premium | `customer_one` / `auto` | Controlled insufficient-information response |
+| Request User 2’s deductible | `customer_one` / `auto` | Controlled insufficient-information response; no other-owner evidence |
 
-   Validate unique IDs, exactly six cases, paired identical deductible questions, owner/LOB/document mappings, expected responses, and exact supporting passages against the reviewed corpus. Pin corpus and fixture hashes to each run. Unsupported cases have no invented supporting passage.
+## Remaining work, in order
 
-2. **Capture evidence from the actual deployed query path.**
+1. **Complete permissions and budget gates.** Extend Terraform with a scoped evaluation role and operator permissions, including restricted `iam:PassRole`. Keep artifacts private, encrypted, retained explicitly, and separate from KB ingestion. Pin a [supported evaluator](https://docs.aws.amazon.com/bedrock/latest/userguide/evaluation-kb.html) available in the chosen region/account. Require a positive USD budget and dated [pricing inputs](https://aws.amazon.com/bedrock/pricing/). Extend the existing estimator and ledger to cover paid ingestion/retrieval/capture verification, the six baseline requests, both judge metrics, any explicitly authorized service probe, and supporting AWS costs with a safety margin. Atomically reserve funds in the shared persistent ledger **before any paid preflight, capture, or submission**; each live command must verify its run's reservation before proceeding. Concurrent runs and unresolved costs/submissions cannot reuse reservations; missing usage is not zero cost. All operators must share the same ledger; the current local ledger does not coordinate different machines.
 
-   Extend `src/apps/query_lambda/query.py` with an explicitly enabled, operator-only capture mode. Keep the existing IAM authorization and mandatory retrieval filters. The current API returns only answer, citations, and request ID; existing online reports cannot supply the exact model context.
+   Validate capture token bounds against deployed prompt/context limits and model output limits before capture. Before submission, validate judge input bounds against the exported questions, reference answers, and actual passages, with a documented conservative allowance for judge prompt overhead and output. Operator-entered bounds alone do not establish these limits. If bounds cannot be justified or inputs exceed the reservation, block paid execution. Estimates are gates, not AWS billing caps.
 
-   - Use a server-configured evaluation S3 destination and a validated capture flag on signed requests. Generate artifact keys on the server from request IDs; callers cannot choose S3 destinations.
-   - Write a separate artifact containing selected owner/LOB, question, retrieval filters, all returned passage text and metadata, the exact bounded evidence sent to generation, evidence-ID mappings, final API answer/citations, generation configuration, model/KB identifiers, token usage, request ID, and deployment version.
-   - Enforce passage-count, per-passage, total-context, and answer limits before generation/capture. Record any context selection or truncation. Preserve exactly what the answer model saw; do not shorten context after generation or re-retrieve it later for the judge.
-   - Check owner/LOB and document metadata before passing evidence to generation; reject missing or mismatched ownership metadata. Validate citation IDs against that same evidence.
-   - Keep full evidence out of CloudWatch logs. Capture failure must be visible and must prevent that response from becoming an eligible evaluation sample.
-   - Preserve the existing single-case online runner. Add a dedicated evaluation runner that makes exactly six signed capture requests after budget preflight, without automatic inference retries. Reuse signing and response checks from `scripts/test_online_rag.py` through shared helpers.
+2. **Verify deployed capture under the budget gate.** Confirm corpus ingestion and retrieval, then validate the [capture workflow](ONLINE_RAG_EVALUATION.md#exact-evidence-capture-for-judge-evaluation). Account for verification requests separately from the six baseline requests. Preserve the exact generation context and final API answer, citations, filters, model/deployment IDs, usage, and corpus/fixture hashes. Verify deployed corpus equivalence; local hashes alone do not establish it. Enforce context bounds and owner/LOB checks before generation. Capture stays operator-only and opt-in; full evidence stays out of logs. Failed captures cannot become evaluation samples.
 
-   Acceptance: tests prove the captured final answer equals the API answer, captured generation context equals model input, ordinary requests do not write artifacts, and isolation failures cannot reach generation or judge submission.
+3. **Extend the runner and validate the dataset.** Extend the existing `scripts/evaluate_rag.py` and helpers in `src/evaluation/`, reusing online signing/response checks. Add the budget-gated six-request capture command; local `prepare`, `reserve`, and `export` already exist. Make exactly six signed baseline capture requests without automatic inference retries. Persist per-case intent before each request and its response/evidence afterward. On an ambiguous timeout or interrupted capture, stop, retain the reservation, and reconcile available evidence before proceeding; do not automatically repeat inference. An incomplete run cannot submit a partial dataset, and replacement requests require explicit authorization and sufficient remaining budget.
 
-3. **Provision evaluation storage and permissions through Terraform.**
+   Use the existing exporter for captured answers and actual retrieval context in the [AWS JSONL schema](https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-evaluation-prompt-retrieve-generate.html). Reject stale, incomplete, duplicate, or isolation/citation-invalid samples. Preserve empty actual retrieval; never substitute expected passages. SDK request validation does not validate JSONL contents, and the documented schema does not explicitly establish empty-array handling. Record evidence of service compatibility as a submission prerequisite. If compatibility remains unresolved, block the baseline; any paid probe must be explicitly authorized, separately reserved, and recorded as an additional job. Associate results by recorded IDs/hashes, not row order, and require unambiguous association for all six cases.
 
-   Add `infra/aws/terraform/development/evaluation.tf`, relevant outputs, example configuration, and Terraform tests.
+4. **Submit once and collect.** Configure **Bring your own inference responses** with the **Retrieval and response generation** evaluation type using `precomputedRagSourceConfig.retrieveAndGenerateSourceConfig` in the [AWS job configuration](https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-evaluation-create-randg.html), with only `Builtin.Correctness` and `Builtin.Faithfulness`. Persist the request manifest and idempotency token before submission, then retain the job ID. Disable automatic create retries and reconcile ambiguous submissions before another job. Local `prepare`, `reserve`, and `export` are implemented. Proposed live commands `capture`, `submit`, `status`, `stop`, and `collect` are **not implemented yet**. `prepare` validates and estimates without paid inference; inspection/collection use the same job without generating replacement answers or resubmitting.
 
-   - Provision private encrypted artifact storage with public access blocked, TLS-only access, explicit retention, and separate `captures/`, `inputs/`, `outputs/`, and `runs/` prefixes. Keep it outside the KB ingestion source.
-   - Grant the query Lambda write access only to captures when capture is enabled.
-   - Create a Bedrock evaluation service role with scoped trust conditions, input read/output write access, and invocation permissions for one configured supported evaluator. Add KMS permissions only if using a customer-managed key.
-   - Give the operator the necessary artifact access, evaluation create/get/list/stop permissions, and `iam:PassRole` limited to the evaluation role and Bedrock service. Scope resources where supported; explain required wildcard permissions.
-   - Require region, evaluator identifier, artifact locations, budget, bounds, and pricing inputs through configuration; document them in `example.env`. Keep credentials out of Terraform and reports.
+   Add durable lifecycle and cost settlement records for successful, failed, stopped, and ambiguous operations. Recovery must inspect the recorded run/job without submitting a replacement. Define settlement evidence for capture, judge, and supporting costs; record confirmed spend permanently against the shared budget and release only the proven unused portion of a reservation. Unknown usage or unresolved submissions retain a conservative reservation. A stop request or terminal job status alone does not establish final charges.
 
-   Select and pin one model after verifying regional/account availability. Amazon Nova Pro is a candidate on the [supported evaluator list](https://docs.aws.amazon.com/bedrock/latest/userguide/evaluation-kb.html); do not infer evaluator support from the online answer model. If a cross-region inference profile is necessary, explicitly account for its model permissions and routing.
+5. **Define acceptance, test, report, and review.** Before submission, record per-metric score acceptance rules, required explanations, and review criteria for all six cases. Define how controlled insufficient-information answers are assessed, including the handling of potentially non-applicable faithfulness with empty context. Preserve any service-returned score and explanation; a reviewer must document any non-applicability decision, and missing results cannot silently become passes. Define how judge/human disagreements are investigated and resolved without changing thresholds after seeing results.
 
-4. **Build and validate the bring-your-own-response dataset.**
+   Run unit, mocked end-to-end, and Terraform checks for evidence fidelity, isolation, dataset validation, budget concurrency, enforced bounds, interrupted capture recovery, ambiguous submissions, settlement, and missing/duplicate/unmatched results. Document configuration, commands, reconciliation, retention, and teardown in the linked runbooks. After offline checks, budget-gated deployed verification, and dataset compatibility checks pass, run the single budget-gated baseline. Retain raw outputs, per-case scores/explanations, evidence, deterministic checks, usage/cost records, and a six-row report in gitignored `evaluation_reports/<run_id>/` and S3. Each case needs a reviewer, timestamp, pass/fail, and reasons. Any paid rerun must be explicitly requested and fit the remaining budget.
 
-   Add a small `src/evaluation/` package and `scripts/evaluate_rag.py`. Separate fixture validation, capture validation, dataset export, budget calculation, job operations, and reporting into testable functions.
+**Done means:** one completed six-case baseline job, complete and unambiguously associated metric results, all six human reviews passing under the recorded acceptance rules, and independent owner/LOB isolation and citation checks passing. Cost records must be settled or explicitly retained as unresolved reservations without reusable funds. Missing results or unresolved disagreements remain incomplete; aggregate scores cannot override deterministic failures. Faithfulness alone does not prove citation correctness.
 
-   Export six JSONL records with one conversation turn each: `prompt`, `referenceResponses`, and `output` containing the captured answer, source/model identifiers, and `retrievedPassages.retrievalResults`. Match the dataset source identifier to the job configuration. Keep scenario/request IDs and row hashes in a sidecar manifest and verify result associations rather than assuming output order.
-
-   Ground-truth passages remain in the review manifest. AWS built-in metrics do not use `referenceContexts`; faithfulness uses actual retrieved context. Do not substitute expected passages for captured retrieval evidence. Follow the [AWS dataset schema](https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-evaluation-prompt-retrieve-generate.html).
-
-   Reject incomplete captures, stale hashes, duplicate/missing cases, owner/LOB/citation failures, and schema violations before upload/submission. Preserve empty retrieval honestly; validate the service's handling before a paid run rather than fabricating context. Missing or inapplicable scores must remain visible, especially for abstention cases.
-
-5. **Implement the cost gate before paid capture and before submission.**
-
-   Require a positive total USD budget and a dated pricing record with model, region, rates, source URL, and token assumptions. Missing or invalid prices/bounds block paid work.
-
-   Estimate generation and retrieval costs for any new captures, plus evaluator input/output tokens for both metrics across all six rows. Include built-in judge prompt overhead, repeated context per metric, conservative output allowances, a documented safety margin, and supporting AWS request/storage costs. Use the [current AWS pricing](https://aws.amazon.com/bedrock/pricing/); judge prompts are billable tokens.
-
-   Store a persistent run ledger with estimates, reservations, capture costs, job IDs, and known usage. Reserve the estimate atomically before paid work so concurrent runs cannot reuse the same budget. Explicitly requested reruns consume the remaining budget; failed or ambiguous operations retain reservations until reconciled. Missing actual usage must not become zero cost.
-
-   Acceptance: unset budget, insufficient remaining budget, stale/changed pricing inputs, oversized data, or an unresolved previous submission block new work. The estimate is a submission gate, not an AWS billing cap; evaluator output allowances are estimate assumptions unless the service exposes enforceable limits.
-
-6. **Submit once, then inspect the same job.**
-
-   Use the Bedrock control-plane client with `applicationType=RagEvaluation`, `taskType=General`, precomputed retrieve-and-generate source configuration, and only `Builtin.Correctness` and `Builtin.Faithfulness`, following [AWS's job configuration](https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-evaluation-create-randg.html).
-
-   Persist an immutable request manifest and idempotency token before submission; immediately retain the returned job ARN/ID. Disable automatic create retries. On an ambiguous response, reconcile the existing submission before allowing another job. Bounded polling may resume against the same ID; timeouts or failed jobs must never trigger automatic resubmission. Support explicit stop and collect operations without scheduling.
-
-   Proposed CLI, to be implemented (commands below do not exist yet):
-
-   ```sh
-   uv run --locked --env-file .env python scripts/evaluate_rag.py prepare --run-id baseline_001
-   uv run --locked --env-file .env python scripts/evaluate_rag.py capture --run-id baseline_001
-   uv run --locked --env-file .env python scripts/evaluate_rag.py submit --run-id baseline_001
-   uv run --locked --env-file .env python scripts/evaluate_rag.py status --run-id baseline_001
-   uv run --locked --env-file .env python scripts/evaluate_rag.py collect --run-id baseline_001
-   ```
-
-   `prepare` validates fixtures/configuration and estimates costs without paid inference. `capture` enforces the initial budget reservation; `submit` validates the actual six-row export and remaining reservation. Inspection and collection never generate replacement answers.
-
-7. **Produce a reviewable report and require human sign-off.**
-
-   Retain raw AWS outputs, JSON summary, and a six-row Markdown review template under a gitignored `evaluation_reports/<run_id>/` and the configured artifact prefix. Include references, captured evidence and responses, citations, IDs/hashes, model/metric configuration, status/failures, per-case scores and available explanations, available usage, estimated cost, and deterministic check results.
-
-   Require a reviewer, timestamp, pass/fail, and reasons for every case. Review answer accuracy, limits/exclusions, citation support, abstention, and owner/LOB isolation against the actual policy. Investigate and document judge disagreements. Citation correctness is not established by faithfulness alone. Do not add citation metrics beyond the two metrics in Phase 1 scope.
-
-   Completion requires one completed six-case job, all six manual reviews passing, and independent isolation/citation checks passing. Missing results or unresolved disagreements remain incomplete; an aggregate judge score cannot override a deterministic failure. Keep broader Phase 1 authentication and end-to-end checks separate.
-
-8. **Validate and document the operational workflow.**
-
-   - Unit tests: fixture/version drift, exact evidence capture, isolation failure, dataset serialization, abstention handling, budget boundaries/concurrency, redaction, submission ambiguity, polling timeout, failed jobs, and missing/duplicate/out-of-order result records.
-   - Mocked integration test: six captures through dataset export, one submission, collection, and pending manual review; assert there is no second answer-generation path or automatic paid retry.
-   - Terraform validation/tests: private storage, capture disabled by default, role trust, S3/model scopes, and restricted pass-role.
-   - Document configuration, preflight, commands, manual review, budget reconciliation, stopping/inspecting jobs, retention, and teardown. Link the runbook from the Phase 1 plan, resource inventory, online evaluation guide, and Terraform README. Keep implementation and live verification statuses distinct.
-   - After offline checks and deployed retrieval validation pass, perform the single budget-gated live baseline and retain all run evidence. Any fixes requiring a new paid run need an explicit rerun within the remaining budget.
-
-Implementation order: fixture alignment → evidence capture and Terraform → dataset and budget gate → job lifecycle and reports → offline verification → deployed baseline and manual review. Choose the numeric budget and evaluator/pricing configuration before paid execution; neither is required to begin implementation.
+**Before paid execution:** choose the numeric budget and evaluator/pricing configuration, validate cost bounds, and reserve the applicable costs. Before baseline submission, also establish dataset compatibility and record score/review acceptance rules. Implementation can begin before those choices are finalized.

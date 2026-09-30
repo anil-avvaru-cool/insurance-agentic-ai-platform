@@ -5,8 +5,8 @@ from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
-import re
 import time
+import sys
 from urllib.parse import urlsplit
 import uuid
 
@@ -17,7 +17,8 @@ from botocore.awsrequest import AWSRequest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-INSUFFICIENT = "The selected policy document does not provide this information."
+sys.path.insert(0, str(ROOT / 'src'))
+from evaluation.online import INSUFFICIENT, check_answer
 
 
 class RequestSigner:
@@ -36,40 +37,6 @@ class RequestSigner:
         self.secrets.add(request.headers["Authorization"])
         return dict(request.headers)
 
-
-def check_answer(case, body):
-    """Check observable contract, isolation and amounts, not semantic correctness."""
-    errors = []
-    if not isinstance(body, dict):
-        return ["response must be a JSON object"]
-    if not isinstance(body.get("request_id"), str) or not body["request_id"].strip():
-        errors.append("missing request_id")
-    answer, citations = body.get("answer"), body.get("citations")
-    if not isinstance(answer, str) or not answer.strip():
-        errors.append("missing answer")
-    if not isinstance(citations, list):
-        return errors + ["citations must be a list"]
-    for citation in citations:
-        if not isinstance(citation, dict):
-            errors.append("invalid citation")
-            continue
-        if citation.get("document_id") not in case["allowed_document_ids"]:
-            errors.append("citation outside allowed documents")
-        if citation.get("lob") != case["lob"]:
-            errors.append("citation LOB mismatch")
-        if not citation.get("source") or not citation.get("evidence_id"):
-            errors.append("citation missing source or evidence_id")
-    if case["expected_status"] == "insufficient_information":
-        if answer != INSUFFICIENT or citations:
-            errors.append("expected controlled insufficient-information response without citations")
-    else:
-        if not citations or answer == INSUFFICIENT:
-            errors.append("supported question needs an answer with citations")
-        # This catches swapped owner amounts, but cannot assess negation or grounding.
-        amounts = lambda text: set(re.findall(r"\$\s*(\d+(?:\.\d+)?)", text.replace(",", "")))
-        if isinstance(answer, str) and not amounts(case["expected_answer"]).issubset(amounts(answer)):
-            errors.append("expected monetary amount missing")
-    return errors
 
 
 def scenarios(fixtures, capture_evidence=False):
@@ -171,8 +138,14 @@ def main(argv=None):
     selected = [case for case in fixtures if case["case_id"] == args.case_id]
     if len(selected) != 1:
         parser.error(f"--case-id must match exactly one fixture; found {len(selected)} matches for {args.case_id!r}")
+    corpus_hash = None
     capture_bucket = capture_prefix = None
     if args.capture_evidence:
+        from evaluation.fixtures import validate_baseline
+        from evaluation.judge import digest
+        validation = validate_baseline(ROOT / 'data/sample_insurance_policies', args.fixtures,
+                                       ROOT / 'tests/fixtures/aws_poc/judge_baseline.json')
+        corpus_hash = digest(validation['sha256'])
         capture_bucket = os.environ["QUERY_CAPTURE_BUCKET"]
         capture_prefix = os.environ["QUERY_CAPTURE_PREFIX"]
         if not capture_bucket or not capture_prefix or not capture_prefix.endswith("/"):
@@ -192,6 +165,7 @@ def main(argv=None):
                       capture_storage=storage, capture_bucket=capture_bucket, capture_prefix=capture_prefix)
     report = {
         "fixture_sha256": hashlib.sha256(fixture_bytes).hexdigest(),
+        "corpus_sha256": corpus_hash,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "automated_checks_passed": all(item["passed"] for item in results),
         "semantic_review_required": True,

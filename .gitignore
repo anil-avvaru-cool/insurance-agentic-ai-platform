@@ -241,3 +241,6 @@ tfout.txt
 tf_group_resources.txt
 tfgraph.png
 infra/aws/terraform/bootstrap/bootstrap.s3.tfbackend
+
+# Judge evidence, datasets, reports and persistent budget reservations
+evaluation_reports/
