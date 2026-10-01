@@ -34,3 +34,11 @@ enable_evaluation_capture = false
 evaluation_capture_retention_days = 30
 query_max_passage_chars = 6000
 query_max_context_chars = 24000
+
+# Optional judge storage/IAM. No job is created by Terraform.
+enable_rag_judge = false
+# Choose supported regional evaluator models before enabling:
+judge_evaluator_model_id        = ""
+judge_custom_evaluator_model_id = ""
+# Existing operator role; null exports a policy for manual attachment.
+judge_operator_role_name = null

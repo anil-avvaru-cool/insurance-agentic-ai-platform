@@ -1,4 +1,4 @@
-"""Offline judge preparation and exact evidence export. No AWS calls."""
+"""Prepare, capture, submit and review one six-case Bedrock judge evaluation."""
 import argparse
 import hashlib
 import json
@@ -26,24 +26,29 @@ def main(argv=None):
     export.add_argument('--prepared', type=Path, required=True)
     export.add_argument('--captures', type=Path, required=True)
     export.add_argument('--output', type=Path, required=True)
+    from evaluation.judge_workflow import add_commands, execute
+    add_commands(sub)
     args = parser.parse_args(argv)
+    if args.command in ('capture', 'upload', 'submit', 'status', 'collect', 'summarize'):
+        return execute(args, ROOT)
+
     validation = validate_baseline(ROOT / 'data/sample_insurance_policies', ROOT / 'tests/fixtures/aws_poc/questions.json', ROOT / 'tests/fixtures/aws_poc/judge_baseline.json')
     fixture_hash = hashlib.sha256((ROOT / 'tests/fixtures/aws_poc/questions.json').read_bytes()).hexdigest()
     corpus_hash = digest(validation['sha256'])
     if args.command == 'prepare':
-        keys = ('pricing_date', 'region', 'evaluator_model_id', 'pricing_source', 'budget_usd',
+        keys = ('pricing_date', 'region', 'evaluator_model_id', 'custom_evaluator_model_id', 'rag_source_id', 'pricing_source', 'budget_usd',
                 'safety_multiplier', 'supporting_cost_bound_usd', 'deployment_id', 'model_id',
                 'knowledge_base_id', 'max_age_seconds', 'evaluation_role_arn', 'dataset_s3_uri', 'output_s3_uri')
         config = {key: os.environ['JUDGE_' + key.upper()] for key in keys}
         config['max_age_seconds'] = int(config['max_age_seconds'])
-        for component in ('capture', 'judge'):
+        for component in ('capture', 'judge', 'custom_judge'):
             for direction in ('input', 'output'):
                 for suffix in ('token_bound', 'usd_per_million'):
                     key = f'{component}_{direction}_{suffix}'
                     config[key] = os.environ['JUDGE_' + key.upper()]
         estimate_result = estimate(config)
-        identity = {key: config[key] for key in ('deployment_id', 'model_id', 'knowledge_base_id', 'max_age_seconds')}
-        if type(identity['max_age_seconds']) is not int or identity['max_age_seconds'] <= 0 or any(not isinstance(identity[key], str) or not identity[key].strip() for key in ('deployment_id', 'model_id', 'knowledge_base_id')):
+        identity = {key: config[key] for key in ('deployment_id', 'model_id', 'knowledge_base_id', 'rag_source_id', 'max_age_seconds')}
+        if type(identity['max_age_seconds']) is not int or identity['max_age_seconds'] <= 0 or any(not isinstance(identity[key], str) or not identity[key].strip() for key in ('deployment_id', 'model_id', 'knowledge_base_id', 'rag_source_id')):
             raise ValueError('explicit deployment identity and positive capture age required')
         prepared = {'schema_version': 1, 'run_id': uuid.uuid4().hex, 'validation': validation,
                     'identity': {**identity, 'fixture_sha256': fixture_hash, 'corpus_sha256': corpus_hash},

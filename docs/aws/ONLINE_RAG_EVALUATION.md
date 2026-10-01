@@ -94,7 +94,7 @@ nonempty. Archive required evidence and explicitly empty only this dedicated
 bucket before teardown, or retain the resources and stop requesting captures.
 
 This single-case diagnostic does not submit a judge job or implement its budget
-ledger. The budget-gated six-case runner, JSONL export, evaluator permissions,
-submission, and manual-review report remain in the
-[implementation plan](BEDROCK_RAG_JUDGE_IMPLEMENTATION_PLAN.md). Do not treat
-these diagnostic captures as completion of the Phase 1 judge baseline.
+ledger. The six-case capture, validated JSONL export, evaluator permissions, submission,
+and result summary are implemented in the [judge operator runbook](BEDROCK_RAG_JUDGE_LOCAL.md).
+Deployment and the paid baseline remain pending. Single-case diagnostic captures
+do not constitute completion of the Phase 1 judge baseline.

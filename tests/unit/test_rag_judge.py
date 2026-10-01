@@ -9,21 +9,25 @@ from unittest.mock import patch
 from scripts.evaluate_rag import main
 
 from apps.query_lambda.query import _evidence
-from evaluation.judge import BudgetLedger, estimate, export_dataset, digest, job_request
+from evaluation.judge import BudgetLedger, CUSTOM_METRIC, METRICS, estimate, export_dataset, digest, job_request
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
 class JudgeTests(TestCase):
     def config(self):
-        return {'pricing_date': date.today().isoformat(), 'region': 'test_region', 'evaluator_model_id': 'test_judge',
+        return {'pricing_date': date.today().isoformat(), 'region': 'test_region', 'evaluator_model_id': 'test_judge', 'custom_evaluator_model_id': 'test_custom_judge',
                 'pricing_source': 'operator_reviewed_test_rates', 'budget_usd': 10, 'safety_multiplier': 2,
                 'supporting_cost_bound_usd': '.1', **{f'{kind}_{direction}_{suffix}': value
-                for kind in ('capture', 'judge') for direction in ('input', 'output')
+                for kind in ('capture', 'judge', 'custom_judge') for direction in ('input', 'output')
                 for suffix, value in (('token_bound', 1000), ('usd_per_million', 1))}}
 
-    def test_estimate_counts_both_metrics_and_rejects_bad_inputs(self):
-        self.assertEqual(estimate(self.config())['estimated_usd'], '0.272000')
+    def test_estimate_counts_three_metrics_and_rejects_bad_inputs(self):
+        self.assertEqual(estimate(self.config())['estimated_usd'], '0.296000')
+        result = estimate(self.config())
+        self.assertEqual(result['judge_metric_assessments'], 18)
+        self.assertEqual(result['custom_metric_assessments'], 6)
+        self.assertEqual(estimate({**self.config(), 'custom_judge_input_usd_per_million': 2})['estimated_usd'], '0.308000')
         for changes in ({'budget_usd': 0}, {'budget_usd': '.01'}, {'pricing_date': '2000-01-01'},
                         {'safety_multiplier': '.5'}, {'judge_input_token_bound': 1.5},
                         {'capture_input_usd_per_million': 'NaN'}):
@@ -51,7 +55,7 @@ class JudgeTests(TestCase):
         ids = json.loads((ROOT / 'tests/fixtures/aws_poc/judge_baseline.json').read_text())['case_ids']
         cases = [next(case for case in fixtures if case['case_id'] == key) for key in ids]
         identity = {'fixture_sha256': 'fixtures', 'corpus_sha256': 'corpus', 'deployment_id': 'deployment',
-                    'model_id': 'model', 'knowledge_base_id': 'kb', 'max_age_seconds': 3600}
+                    'model_id': 'model', 'knowledge_base_id': 'kb', 'rag_source_id': 'insurance_api', 'max_age_seconds': 3600}
         results = []
         for index, case in enumerate(cases):
             config = {'model_id': 'model', 'knowledge_base_id': 'kb', 'result_count': 10,
@@ -103,14 +107,25 @@ class JudgeTests(TestCase):
         config = {**self.config(), 'evaluation_role_arn': 'arn:aws:iam::123456789012:role/evaluation',
                   'dataset_s3_uri': 's3://evaluation/datasets/baseline.jsonl',
                   'output_s3_uri': 's3://evaluation/results/'}
-        request = job_request(config, 'a' * 32, {'knowledge_base_id': 'kb'})
+        request = job_request(config, 'a' * 32, {'knowledge_base_id': 'kb', 'rag_source_id': 'insurance_api'})
         source = request['inferenceConfig']['ragConfigs'][0]
-        self.assertEqual(source['precomputedRagSourceConfig']['retrieveAndGenerateSourceConfig']['ragSourceIdentifier'], 'kb')
+        self.assertEqual(source['precomputedRagSourceConfig']['retrieveAndGenerateSourceConfig']['ragSourceIdentifier'], 'insurance_api')
         self.assertEqual(request['evaluationConfig']['automated']['datasetMetricConfigs'][0]['metricNames'],
-                         ['Builtin.Correctness', 'Builtin.Faithfulness'])
-        self.assertEqual(request, job_request(config, 'a' * 32, {'knowledge_base_id': 'kb'}))
+                         METRICS)
+        automated = request['evaluationConfig']['automated']
+        custom = automated['customMetricConfig']
+        definition = custom['customMetrics'][0]['customMetricDefinition']
+        self.assertEqual(definition['name'], CUSTOM_METRIC)
+        self.assertEqual([item['value']['floatValue'] for item in definition['ratingScale']], [0, 1])
+        for variable in ('prompt', 'ground_truth', 'context', 'prediction'):
+            self.assertIn('{{' + variable + '}}', definition['instructions'])
+        self.assertEqual(custom['evaluatorModelConfig']['bedrockEvaluatorModels'][0]['modelIdentifier'], 'test_custom_judge')
+        self.assertEqual(automated['evaluatorModelConfig']['bedrockEvaluatorModels'][0]['modelIdentifier'], 'test_judge')
+        self.assertNotEqual(request['clientRequestToken'], job_request({**config, 'custom_evaluator_model_id': 'another_judge'}, 'a' * 32, {'rag_source_id': 'insurance_api'})['clientRequestToken'])
+        self.assertRegex(request['jobName'], r'^[a-z0-9]{1,63}$')
+        self.assertEqual(request, job_request(config, 'a' * 32, {'knowledge_base_id': 'kb', 'rag_source_id': 'insurance_api'}))
         with self.assertRaises(ValueError):
-            job_request({**config, 'dataset_s3_uri': 'https://example.test'}, 'a' * 32, {'knowledge_base_id': 'kb'})
+            job_request({**config, 'dataset_s3_uri': 'https://example.test'}, 'a' * 32, {'knowledge_base_id': 'kb', 'rag_source_id': 'insurance_api'})
 
     def test_cli_prepare_reserve_export_without_aws(self):
         cases, report, identity = self.samples()

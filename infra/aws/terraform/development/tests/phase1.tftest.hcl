@@ -135,3 +135,47 @@ run "evaluation_capture" {
     error_message = "Pass capture opt-in, evidence limits, and code hash to Lambda."
   }
 }
+run "judge_disabled" {
+  command = plan
+  assert {
+    condition     = length(aws_s3_bucket.rag_judge) == 0 && length(aws_iam_role.rag_judge) == 0 && length(aws_iam_policy.rag_judge_operator) == 0
+    error_message = "Judge resources must remain opt-in."
+  }
+}
+run "judge_requires_evaluators" {
+  command = plan
+  variables { enable_rag_judge = true }
+  expect_failures = [aws_iam_role.rag_judge]
+}
+run "judge_scoped_permissions" {
+  command = apply
+  variables {
+    enable_rag_judge                = true
+    judge_evaluator_model_id        = "amazon.nova-pro-v1:0"
+    judge_custom_evaluator_model_id = "amazon.nova-lite-v1:0"
+  }
+  assert {
+    condition     = aws_s3_bucket_public_access_block.rag_judge[0].block_public_policy && aws_s3_bucket_public_access_block.rag_judge[0].restrict_public_buckets && !aws_s3_bucket.rag_judge[0].force_destroy && one(aws_s3_bucket_server_side_encryption_configuration.rag_judge[0].rule).apply_server_side_encryption_by_default[0].sse_algorithm == "AES256"
+    error_message = "Evaluation data must be private, encrypted and protected from forced deletion."
+  }
+  assert {
+    condition     = jsondecode(aws_iam_role.rag_judge[0].assume_role_policy).Statement[0].Condition.StringEquals["aws:SourceAccount"] == var.aws_account_id && jsondecode(aws_iam_role.rag_judge[0].assume_role_policy).Statement[0].Condition.ArnLike["aws:SourceArn"] == local.judge_job_arn
+    error_message = "Only Bedrock evaluations in this account and region may assume the judge role."
+  }
+  assert {
+    condition     = jsondecode(aws_iam_role_policy.rag_judge[0].policy).Statement[2].Resource == ["${aws_s3_bucket.rag_judge[0].arn}/datasets/*"] && jsondecode(aws_iam_role_policy.rag_judge[0].policy).Statement[3].Resource == ["${aws_s3_bucket.rag_judge[0].arn}/results/*"] && toset(jsondecode(aws_iam_role_policy.rag_judge[0].policy).Statement[4].Resource) == toset(local.judge_model_arns)
+    error_message = "Judge role must use only input/output prefixes and the configured evaluator models."
+  }
+  assert {
+    condition     = jsondecode(aws_iam_policy.rag_judge_operator[0].policy).Statement[2].Resource == [aws_iam_role.rag_judge[0].arn] && jsondecode(aws_iam_policy.rag_judge_operator[0].policy).Statement[2].Condition.StringEquals["iam:PassedToService"] == "bedrock.amazonaws.com" && length(aws_iam_role_policy_attachment.rag_judge_operator) == 0
+    error_message = "Scope PassRole and avoid guessing an operator attachment."
+  }
+  assert {
+    condition     = output.rag_judge_environment.JUDGE_EVALUATOR_MODEL_ID == var.judge_evaluator_model_id && output.rag_judge_environment.JUDGE_CUSTOM_EVALUATOR_MODEL_ID == var.judge_custom_evaluator_model_id
+    error_message = "Export both independently configured evaluators."
+  }
+  assert {
+    condition     = toset(jsondecode(aws_iam_policy.rag_judge_operator[0].policy).Statement[0].Resource) == toset(local.judge_model_arns) && jsondecode(aws_iam_policy.rag_judge_operator[0].policy).Statement[1].Resource == [local.judge_job_arn]
+    error_message = "CreateEvaluationJob authorizes on model ARNs; GetEvaluationJob authorizes on job ARNs."
+  }
+}

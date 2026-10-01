@@ -14,6 +14,7 @@ the offline foundation first, then the query API after offline validation passes
 | 3 | **Ingest offline documents and verify.** Upload validated PDFs and metadata, complete ingestion, and verify retrieval, source references, document replacement, and owner/LOB filtering. Retain the validation reports. | [Offline ingestion runbook](../../../docs/aws/OFFLINE_INGESTION.md) and [indexing validation requirements](../../../docs/aws/PHASE_1_AWS_POC_PLAN.md#4-configure-and-validate-document-indexing). |
 | 4 | **Deploy the online query API.** After offline validation passes, attest with `index_validation_passed = true`, build the Lambda ZIP, configure the operator identity, and set `enable_query_api = true`. Review and apply a fresh development plan. | [Phase 1 query deployment](#phase-1-query-deployment). |
 | 5 | **Test online RAG queries.** Run question fixtures, review answers and citations, and complete authentication, controlled-failure, and CloudWatch checks. Retain the acceptance evidence. | [Online RAG evaluation runbook](../../../docs/aws/ONLINE_RAG_EVALUATION.md), [query acceptance checks](#phase-1-query-deployment), and [completion criteria](../../../docs/aws/PHASE_1_AWS_POC_PLAN.md#completion-criteria). |
+| 6 | **Evaluate answers with a Bedrock judge.** Deploy opt-in evidence capture and judge resources, configure evaluators, then prepare, capture, export, upload, submit, check status and collect the six-case results. Review all three metrics and retain review notes. | [RAG judge evaluation](../../../docs/aws/RAG_JUDGE_EVALUATION.md) and [optional judge infrastructure](#optional-bedrock-judge). |
 
 These steps describe the workflow; they do not establish deployment or acceptance
 status. See [pending work](../../../docs/PHASE_1_PENDING_WORK.md) for remaining
@@ -358,5 +359,14 @@ scoped Lambda write/operator read permissions when the query API is enabled.
 Rebuild the query ZIP and deploy its new environment variables together. Capture
 retention defaults to 30 days; `force_destroy` is disabled. See the
 [exact capture workflow](../../../docs/aws/ONLINE_RAG_EVALUATION.md#exact-evidence-capture-for-judge-evaluation)
-for configuration, the single-case command, and teardown. Judge submission and
-its budget gate remain separate implementation work.
+for configuration, the single-case command, and teardown.
+
+### Optional Bedrock judge
+
+`enable_rag_judge = true` adds a separate private SSE-S3 bucket, Bedrock evaluation
+role and scoped operator policy. Set both `judge_evaluator_model_id` and
+`judge_custom_evaluator_model_id` to supported regional model IDs. Optionally set
+`judge_operator_role_name`; otherwise attach the exported policy yourself.
+Terraform creates no evaluation jobs. Copy `rag_judge_environment` into `.env`
+and follow [RAG judge evaluation](../../../docs/aws/RAG_JUDGE_EVALUATION.md) for purpose and run steps, or the [detailed operator runbook](../../../docs/aws/BEDROCK_RAG_JUDGE_LOCAL.md) for configuration and recovery.
+Deployment, evaluator access and the paid baseline remain operator steps.
