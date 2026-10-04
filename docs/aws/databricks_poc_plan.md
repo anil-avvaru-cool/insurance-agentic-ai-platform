@@ -1,6 +1,7 @@
 # Insurance Databricks POC on AWS
 
-Status: deployment plan; no resources deployed. Pricing checked October 3, 2026.
+Status: Free Edition POC working (user confirmed); CLI bundle deployment is the
+next step. AWS infrastructure remains planned. Pricing checked October 3, 2026.
 
 ## Recommendation and review
 
@@ -157,6 +158,22 @@ Suggested personal learning sequence:
 4. Configure both Terraform providers and follow the AWS deployment sequence.
 5. Track trial expiry and credits. Marketplace/payment-linked trials can convert
    to paid usage; AWS-owned resources are billed separately from Databricks credits.
+
+## Next: deploy without the workspace UI using DAB
+
+Use Databricks Asset Bundles (DAB; now documented as Declarative Automation
+Bundles) to version the working Python source and pipeline settings. In the
+existing workspace, generate its bundle configuration, bind the existing pipeline,
+then validate → deploy → run from the CLI. Binding preserves the pipeline identity
+and ingestion state; keep triggered/serverless execution and schedules disabled.
+See [the concise CLI walkthrough](databricks_poc_fig.md#9-next-deploy-with-databricks-asset-bundles-without-the-workspace-ui).
+
+Keep the current schema/volume as prerequisites for this first migration.
+For the AWS stage, Terraform owns S3/IAM and UC infrastructure; DAB owns pipeline
+code/settings. Remove pipeline ownership from Terraform if adopting DAB.
+For CI, use workspace-supported OAuth service principal authentication or federation,
+with existing UC/pipeline permissions and secrets supplied by CI.
+[Bundle authentication](https://docs.databricks.com/aws/en/dev-tools/bundles/authentication).
 
 ## AWS deployment plan
 

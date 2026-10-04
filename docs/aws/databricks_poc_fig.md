@@ -203,6 +203,80 @@ SQL cell. That permanently removes the POC tables and managed volume inputs.
 | Quota/compute unavailable | Check the Free Edition quota message and wait for reset; keep runs manual. |
 | Gold update fails | Inspect the pipeline error and `gold_event_conflicts`; verify that duplicate event payloads are identical. |
 
-Local validation covers JSON syntax, fixture totals, and Python syntax. Execution,
-expectation metrics and lineage must be verified in your Databricks workspace;
-no Databricks resources have been deployed by creating these files.
+The POC is working (user confirmed). Creating these repository files alone does
+not deploy resources; the next step makes the existing deployment repeatable.
+
+## 9. Next: deploy with Databricks Asset Bundles without the workspace UI
+
+Use DAB (now called Declarative Automation Bundles) to adopt the working pipeline.
+Keep the existing catalog, schema and volume. Install the current
+[Databricks CLI](https://docs.databricks.com/aws/en/dev-tools/cli/install)
+(not the legacy Python `databricks-cli` package). Authenticate once:
+
+```bash
+databricks auth login --host https://<your-workspace-host> --profile insurance-poc
+databricks pipelines list-pipelines --profile insurance-poc
+mkdir -p examples/databricks_poc/bundle
+cd examples/databricks_poc/bundle
+```
+
+OAuth login uses a browser once; subsequent deployment uses CLI only. For fully
+headless execution, use an already provisioned, workspace-supported OAuth M2M
+identity with `DATABRICKS_HOST`, `DATABRICKS_CLIENT_ID` and
+`DATABRICKS_CLIENT_SECRET` supplied through CI secrets; omit the profile below.
+Free Edition lacks account-level APIs: use supported workspace authentication,
+and do not assume account-level service principal provisioning is available.
+[Authentication options](https://docs.databricks.com/aws/en/dev-tools/bundles/authentication).
+
+Create `databricks.yml` in this bundle directory (omit `profile` for CI):
+
+```yaml
+bundle:
+  name: insurance-poc
+include:
+  - resources/*.yml
+targets:
+  dev:
+    default: true
+    workspace:
+      host: https://<your-workspace-host>
+      profile: insurance-poc
+```
+
+Use the working pipeline ID from `list-pipelines`. Generate once, review the
+downloaded source/settings, and adopt the existing resource:
+
+```bash
+databricks bundle generate pipeline --existing-pipeline-id <pipeline-id> -t dev
+databricks bundle validate -t dev
+databricks bundle deployment bind <pipeline-resource-key> <pipeline-id> -t dev
+databricks bundle deploy -t dev
+databricks bundle run <pipeline-resource-key> -t dev
+```
+
+Replace `<pipeline-resource-key>` with the YAML key under `resources.pipelines`
+in the generated file. Retain `serverless: true`, `continuous: false`, the working
+catalog/schema, expectations edition and `insurance.input_path`. Check library
+paths reference the downloaded local source. Commit YAML/source; exclude `.databricks/`
+and credentials. Later changes need only validate → deploy → run.
+Do not add development-mode overrides when adopting this working pipeline.
+Generation alone creates a new pipeline on deployment; binding first keeps its
+identity and checkpoint state. Keep bundle name, target and deployment root stable.
+[CLI generation and binding](https://docs.databricks.com/aws/en/dev-tools/cli/bundle-commands).
+
+No upload is needed for an already completed POC: run again and confirm the
+existing **7 / 6 / 1** counts and **5 / $5,500** Gold totals. For future *new*
+immutable input files, upload separately (from the repository root):
+
+```bash
+databricks fs cp <new-file.jsonl> dbfs:/Volumes/workspace/insurance_poc/claim_files/<new-file.jsonl> --profile insurance-poc
+```
+
+Adjust the catalog if needed; do not overwrite/reupload the completed fixtures or
+full-refresh. DAB deploys code/settings, not volume inputs. Run acceptance SQL from
+steps 5–7 through the SQL Statement Execution API on an available SQL warehouse
+for UI-free verification; save update IDs and results.
+[Volume CLI](https://docs.databricks.com/aws/en/dev-tools/cli/reference/fs-commands),
+[SQL API](https://docs.databricks.com/api/workspace/statementexecution/executestatement).
+Deployment and execution are separate; quotas still apply. `bundle destroy -t dev`
+deletes the adopted pipeline, so use it only when intentionally retiring the POC.
