@@ -1,0 +1,4 @@
+{"event_id": "E001", "claim_id": "C001", "policy_id": "P001", "owner_id": "O001", "lob": "auto", "incident_date": "2026-10-01", "event_time": "2026-10-01T12:00:00Z", "estimated_loss_usd": "1000.00", "event_type": "claim_created"}
+{"event_id": "E002", "claim_id": "C002", "policy_id": "P002", "owner_id": "O002", "lob": "auto", "incident_date": "2026-10-01", "event_time": "2026-10-01T12:00:00Z", "estimated_loss_usd": "500.00", "event_type": "claim_created"}
+{"event_id": "E003", "claim_id": "C003", "policy_id": "P003", "owner_id": "O003", "lob": "property", "incident_date": "2026-10-01", "event_time": "2026-10-01T12:00:00Z", "estimated_loss_usd": "2000.00", "event_type": "claim_created"}
+{"event_id": "E004", "claim_id": "C004", "policy_id": "P004", "owner_id": "O004", "lob": "auto", "incident_date": "2026-10-01", "event_time": "2026-10-01T12:00:00Z", "estimated_loss_usd": "-10.00", "event_type": "claim_created"}
