@@ -1,0 +1,6 @@
+{
+  "warehouse_id": "fabc92e7cab8aea0",
+  "statement": "SELECT * FROM workspace.insurance_poc_cli.gold_daily_claim_summary ORDER BY incident_date, lob;",
+  "wait_timeout": "50s",
+  "on_wait_timeout": "CONTINUE"
+}

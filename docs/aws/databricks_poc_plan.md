@@ -162,17 +162,33 @@ Suggested personal learning sequence:
 ## Next: deploy without the workspace UI using DAB
 
 Use Databricks Asset Bundles (DAB; now documented as Declarative Automation
-Bundles) to version the working Python source and pipeline settings. In the
-existing workspace, generate its bundle configuration, bind the existing pipeline,
-then validate → deploy → run from the CLI. Binding preserves the pipeline identity
-and ingestion state; keep triggered/serverless execution and schedules disabled.
-See [the concise CLI walkthrough](databricks_poc_fig.md#9-next-deploy-with-databricks-asset-bundles-without-the-workspace-ui).
+Bundles) for a **fresh CLI deployment**, without first creating a notebook or
+pipeline in the workspace UI. Follow [section 9, steps 9.1–9.10](databricks_poc_fig.md#9-next-deploy-with-databricks-asset-bundles-without-the-workspace-ui):
+sign up → authenticate → create a fresh schema/managed volume through the general
+CLI → write local bundle YAML/source → validate/deploy → upload file 001/run/query
+→ upload file 002/run/query → replay and save evidence.
 
-Keep the current schema/volume as prerequisites for this first migration.
+The walkthrough uses `workspace.insurance_poc_cli`, one schema and layer-prefixed
+tables, independently of the earlier UI exercise. It does not use bundle generation
+or binding, which are migration tools for an existing pipeline. If migrating the
+working UI deployment instead, generate/review its configuration and bind its
+existing pipeline before deploying to preserve identity/state; do not apply the
+fresh bundle over its tables.
+
+Browser signup and the interactive OAuth login are still required for this
+Free Edition user path. No workspace UI is needed for resource creation, fixture
+uploads, execution or SQL acceptance checks. Pipeline graph/quality panels and
+Catalog Lineage screenshots use the UI; section 9.10 distinguishes these visual
+steps from tasks supported through other CLI/API commands. Current bundles support
+UC resource definitions, so schemas/volumes are not inherently UI-only; this
+walkthrough deliberately provisions them separately.
+[Supported bundle resources](https://docs.databricks.com/aws/en/dev-tools/bundles/resources).
+
 For the AWS stage, Terraform owns S3/IAM and UC infrastructure; DAB owns pipeline
 code/settings. Remove pipeline ownership from Terraform if adopting DAB.
 For CI, use workspace-supported OAuth service principal authentication or federation,
-with existing UC/pipeline permissions and secrets supplied by CI.
+with existing UC/pipeline permissions and secrets supplied by CI. Free Edition
+has no account-level APIs; do not assume account-level identity provisioning.
 [Bundle authentication](https://docs.databricks.com/aws/en/dev-tools/bundles/authentication).
 
 ## AWS deployment plan

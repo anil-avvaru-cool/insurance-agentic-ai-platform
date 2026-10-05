@@ -1,0 +1,24 @@
+bundle:
+  name: insurance-poc-cli
+
+resources:
+  pipelines:
+    insurance_claims:
+      name: insurance-free-poc-cli
+      catalog: workspace
+      schema: insurance_poc_cli
+      serverless: true
+      continuous: false
+      development: false
+      edition: ADVANCED
+      configuration:
+        insurance.input_path: /Volumes/workspace/insurance_poc_cli/claim_files
+      libraries:
+        - glob:
+            include: ./src/insurance_claims_pipeline.py
+
+targets:
+  dev:
+    default: true
+    workspace:
+      host: https://dbc-63b10c7e-c8f7.cloud.databricks.com
