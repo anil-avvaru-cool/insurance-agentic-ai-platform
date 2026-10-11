@@ -230,7 +230,7 @@ local_*.sqlite3*
 *.tfplan
 crash.log
 crash.*.log
-infra/aws/terraform/bootstrap/remote_override.tf
+infra/common_state/aws/bootstrap/remote_override.tf
 
 # Offline ingestion operational reports (document hashes and AWS job details)
 ingestion_reports/
@@ -240,7 +240,7 @@ validation_reports/
 tfout.txt
 tf_group_resources.txt
 tfgraph.png
-infra/aws/terraform/bootstrap/bootstrap.s3.tfbackend
+infra/common_state/aws/bootstrap/bootstrap.s3.tfbackend
 
 # Judge evidence, datasets, reports and persistent budget reservations
 evaluation_reports/

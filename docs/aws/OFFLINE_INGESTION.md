@@ -13,7 +13,7 @@ source citations and owner/LOB isolation are separate step 4 acceptance checks.
 
 ## Quick start
 
-First complete the [development offline deployment](../../infra/aws/terraform/README.md#development-offline-deployment)
+First complete the [development offline deployment](../../infra/pocs/aws_bedrock/README.md#development-offline-deployment)
 setup and policy attachments. Infrastructure deployment commands are maintained
 there; repeat ingestion uses the existing deployment and does not require another
 Terraform apply. Keep the query API disabled until offline validation passes.
@@ -28,7 +28,7 @@ uv sync --locked
 
 # Step 2
 PYTHONPATH=src uv run --locked python scripts/ingest_poc.py \
-  --terraform-dir infra/aws/terraform/development
+  --terraform-dir infra/pocs/aws_bedrock
 ```
 
 The ingestion command reads `ingestion_environment` directly from Terraform's
@@ -36,7 +36,7 @@ applied outputs; there are no bucket names or resource IDs to copy. It uses the
 standard AWS credential chain. Select the intended profile (for example, with
 `AWS_PROFILE`) and refresh its credentials using your normal login method if
 needed. The command does not deploy infrastructure. See the
-[Terraform README](../../infra/aws/terraform/README.md) for infrastructure scope,
+[Terraform README](../../infra/pocs/aws_bedrock/README.md) for infrastructure scope,
 backend setup, and deployment migration guidance.
 
 Reports default to `ingestion_reports/<timestamp>_<unique_id>.json` (gitignored).
@@ -71,7 +71,7 @@ An automated index-validation command remains
 The generic smoke retrieval helper does not establish this acceptance gate.
 Keep `enable_query_api = false` and do not set `index_validation_passed = true`
 until the live validation evidence has been reviewed. Then follow the
-[query deployment instructions](../../infra/aws/terraform/README.md#phase-1-query-deployment).
+[query deployment instructions](../../infra/pocs/aws_bedrock/README.md#phase-1-query-deployment).
 
 ## Operational reference
 

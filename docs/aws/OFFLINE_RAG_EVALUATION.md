@@ -19,7 +19,7 @@ The ingestion policy alone does not grant retrieval permission. If an administra
 needs the policy ARN:
 
 ```bash
-terraform -chdir=infra/aws/terraform/development \
+terraform -chdir=infra/pocs/aws_bedrock \
   output -raw validation_runner_policy_arn
 ```
 
@@ -30,19 +30,19 @@ export AWS_PAGER=""
 aws sts get-caller-identity
 
 export AWS_DEFAULT_REGION="$(
-  terraform -chdir=infra/aws/terraform/development \
+  terraform -chdir=infra/pocs/aws_bedrock \
     output -json ingestion_environment | jq -r '.AWS_REGION'
 )"
 export KB_ID="$(
-  terraform -chdir=infra/aws/terraform/development \
+  terraform -chdir=infra/pocs/aws_bedrock \
     output -json bedrock | jq -r '.knowledge_base_id'
 )"
 export SOURCE_BUCKET="$(
-  terraform -chdir=infra/aws/terraform/development \
+  terraform -chdir=infra/pocs/aws_bedrock \
     output -json bedrock | jq -r '.knowledge_bucket'
 )"
 export SOURCE_PREFIX="$(
-  terraform -chdir=infra/aws/terraform/development \
+  terraform -chdir=infra/pocs/aws_bedrock \
     output -json ingestion_environment | jq -r '.KNOWLEDGE_POC_PREFIX'
 )"
 export EVIDENCE_DIR="validation_reports/$(date -u +%Y%m%dT%H%M%SZ)"
@@ -212,7 +212,7 @@ Using ingestion operator credentials, run the normal ingestion command:
 
 ```bash
 PYTHONPATH=src uv run --locked python scripts/ingest_poc.py \
-  --terraform-dir infra/aws/terraform/development \
+  --terraform-dir infra/pocs/aws_bedrock \
   --report "$EVIDENCE_DIR/replacement-ingestion.json"
 ```
 
@@ -261,7 +261,7 @@ index_validation_passed = true
 ```
 
 This is an operator attestation; Terraform does not execute these checks.
-Continue with [query deployment](../../infra/aws/terraform/README.md#phase-1-query-deployment).
+Continue with [query deployment](../../infra/pocs/aws_bedrock/README.md#phase-1-query-deployment).
 This manual runbook does not implement automated validation or CloudWatch event
 publication; those remain separate work.
 See [CloudWatch RAG evaluation metrics](CLOUDWATCH_RAG_EVAL_METRICS.md) for the offline

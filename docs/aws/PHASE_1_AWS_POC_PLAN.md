@@ -68,7 +68,7 @@ Prerequisites for an AWS ingestion run:
 - Configure the AWS region, bucket, dedicated POC prefix, knowledge base ID, data source ID, and timeout outside application code. Ensure the data source reads the intended prefix, the ingestion runner can upload and start/inspect jobs, and the knowledge base can read documents and write embeddings.
 - Verify the required resources are deployed and accessible; Terraform definitions alone do not establish AWS readiness.
 
-Existing foundations: `scripts/prepare_poc_metadata.py` validates the corpus and checks sidecars; `scripts/bedrock_smoke.py` starts and polls ingestion jobs, including document-failure checks; `infra/aws/terraform/development/bedrock.tf` defines the storage, knowledge base, data source, embedding model, and chunking configuration. Reuse these components and adjust their configuration for this POC.
+Existing foundations: `scripts/prepare_poc_metadata.py` validates the corpus and checks sidecars; `scripts/bedrock_smoke.py` starts and polls ingestion jobs, including document-failure checks; `infra/pocs/aws_bedrock/bedrock.tf` defines the storage, knowledge base, data source, embedding model, and chunking configuration. Reuse these components and adjust their configuration for this POC.
 
 Implement one repeatable CLI command for the four-document POC:
 

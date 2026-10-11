@@ -26,11 +26,11 @@ export AWS_PAGER=""
 aws sts get-caller-identity
 
 export AWS_DEFAULT_REGION="$(
-  terraform -chdir=infra/aws/terraform/development \
+  terraform -chdir=infra/pocs/aws_bedrock \
     output -json ingestion_environment | jq -r '.AWS_REGION'
 )"
 
-terraform -chdir=infra/aws/terraform/development output -json observability
+terraform -chdir=infra/pocs/aws_bedrock output -json observability
 ```
 
 Stop if a command fails or the region is empty or `null`. The `observability`
@@ -46,7 +46,7 @@ output contains:
 
 If the query/API log groups are `null`, the query API is disabled. Complete
 offline validation and follow the
-[query deployment procedure](../../infra/aws/terraform/README.md#phase-1-query-deployment)
+[query deployment procedure](../../infra/pocs/aws_bedrock/README.md#phase-1-query-deployment)
 before continuing. Do not enable the API just to inspect offline validation.
 
 Use the same account and region in the CloudWatch console. Reading Terraform
@@ -166,7 +166,7 @@ telemetry verification does not fill the offline event-publication gap.
 
 Implementation references:
 
-- [Metric filters, dashboard, and destinations](../../infra/aws/terraform/development/observability.tf)
+- [Metric filters, dashboard, and destinations](../../infra/pocs/aws_bedrock/observability.tf)
 - [Query events and failure handling](../../src/apps/query_lambda/query.py)
-- [API access-log configuration](../../infra/aws/terraform/development/query.tf)
-- [Telemetry contract](../../infra/aws/terraform/README.md#telemetry-contract)
+- [API access-log configuration](../../infra/pocs/aws_bedrock/query.tf)
+- [Telemetry contract](../../infra/pocs/aws_bedrock/README.md#telemetry-contract)

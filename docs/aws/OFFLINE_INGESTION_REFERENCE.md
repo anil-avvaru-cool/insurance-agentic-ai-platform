@@ -158,9 +158,9 @@ treat the remote lock as authoritative and inspect before retrying.
 
 ```sh
 PYTHONPATH=src:. uv run --locked python -m unittest discover -s tests/unit -v
-terraform fmt -check -recursive infra/aws/terraform
-terraform -chdir=infra/aws/terraform/development validate
-terraform -chdir=infra/aws/terraform/development test
+terraform fmt -check -recursive infra
+terraform -chdir=infra/pocs/aws_bedrock validate
+terraform -chdir=infra/pocs/aws_bedrock test
 ```
 
 Tests cover invalid/stale corpus, partial uploads, overlapping runs, live config
@@ -170,5 +170,5 @@ These are local tests using AWS doubles/mocked Terraform providers. The runner's
 JSON report supplies step 3 observability. Terraform defines the ingestion
 CloudWatch log group, metric filters and dashboard, but the CLI still needs a
 CloudWatch log publisher and live delivery verification for step 8. See the
-[telemetry contract](../../infra/aws/terraform/README.md#telemetry-contract).
+[telemetry contract](../../infra/pocs/aws_bedrock/README.md#telemetry-contract).
 Alarms and alert delivery remain outside the current POC scope.

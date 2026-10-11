@@ -7,20 +7,20 @@
 
 ## Deployment preparation
 
-- In `infra/aws/terraform/development/terraform.tfvars`, set `enable_rag_judge_infra = true`, `judge_evaluator_model_id`, and `judge_custom_evaluator_model_id` to supported regional foundation models. Inference profiles require additional IAM configuration and are not covered by this Terraform setup.
+- In `infra/pocs/aws_bedrock/terraform.tfvars`, set `enable_rag_judge_infra = true`, `judge_evaluator_model_id`, and `judge_custom_evaluator_model_id` to supported regional foundation models. Inference profiles require additional IAM configuration and are not covered by this Terraform setup.
 - Set `judge_operator_role_name` to an existing operator role, or attach the exported `rag_judge_operator_policy_arn` through your identity system. The operator also needs the existing API invocation/capture-read permissions for capture.
 - Judge storage uses private S3, SSE-S3 encryption, TLS-only access and `force_destroy = false`. The Bedrock service role reads `datasets/`, writes `results/`, and accesses the configured evaluator models. No new Knowledge Base is created. This setup does not use customer-managed KMS keys.
 - Enable the query API and `enable_evaluation_capture`, build the query ZIP and review its deployment as described in [evidence capture](ONLINE_RAG_EVALUATION.md#exact-evidence-capture-for-judge-evaluation).
 
 ```bash
-terraform -chdir=infra/aws/terraform/development validate
-terraform -chdir=infra/aws/terraform/development test
+terraform -chdir=infra/pocs/aws_bedrock validate
+terraform -chdir=infra/pocs/aws_bedrock test
 # User deployment: review the saved plan, then apply it yourself.
-terraform -chdir=infra/aws/terraform/development plan -input=false -out=development.tfplan
-terraform -chdir=infra/aws/terraform/development show development.tfplan
+terraform -chdir=infra/pocs/aws_bedrock plan -input=false -out=development.tfplan
+terraform -chdir=infra/pocs/aws_bedrock show development.tfplan
 # After deployment, copy these outputs into .env:
-terraform -chdir=infra/aws/terraform/development output -json rag_judge_environment
-terraform -chdir=infra/aws/terraform/development output -json evaluation_capture_environment
+terraform -chdir=infra/pocs/aws_bedrock output -json rag_judge_environment
+terraform -chdir=infra/pocs/aws_bedrock output -json evaluation_capture_environment
 ```
 
 - Also set `RAG_QUERY_ENDPOINT`, `JUDGE_DEPLOYMENT_ID` (deployed ZIP hash), `JUDGE_MODEL_ID` and `JUDGE_KNOWLEDGE_BASE_ID`. Verify ingestion matches the local corpus before capture. AWS credentials use the standard profile/role chain.
@@ -76,8 +76,8 @@ uv run --locked python scripts/evaluate_rag.py summarize --export evaluation_rep
 
 ```bash
 PYTHONPATH=src:. uv run --locked python -m unittest discover -s tests/unit -q
-terraform -chdir=infra/aws/terraform/development validate
-terraform -chdir=infra/aws/terraform/development test
+terraform -chdir=infra/pocs/aws_bedrock validate
+terraform -chdir=infra/pocs/aws_bedrock test
 ```
 
 AWS references: [custom judge configuration](https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-evaluation-create-randg-custom.html), [service role](https://docs.aws.amazon.com/bedrock/latest/userguide/judge-service-roles.html), [result artifacts](https://docs.aws.amazon.com/bedrock/latest/userguide/model-evaluation-report-s3.html).

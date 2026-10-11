@@ -94,7 +94,18 @@ Calculate estimated cost per million output tokens as `(total hourly serving cos
 - Report latency, throughput, memory, errors, and cost together. Record regressions as well as improvements.
 - Explain why the result occurs and which workloads benefit. A reproducible negative result is useful evidence; do not claim an improvement unless measurements support it.
 
-### 6. Document findings and clean up
+### 6. Learn two-GPU tensor parallelism
+
+- After the 4B baseline and optimization, select `Qwen/Qwen3-14B` in BF16.
+- Use one `g2-standard-24` node with two 24 GB L4 GPUs, 24 vCPUs and 96 GB host RAM; deploy one replica requesting both GPUs with `--tensor-parallel-size 2` and `--max-model-len 4096`.
+- Its 14.8 billion parameters require approximately 29.6 GB for BF16 weights alone, exceeding one L4. Two GPUs must also accommodate KV cache and runtime overhead; validate memory and concurrency rather than assuming fit.
+- Pin the new model/tokenizer revisions, update request model IDs, and repeat smoke tests and per-GPU telemetry checks.
+- Repeat the four workload shapes, beginning at concurrency 1 and increasing only while memory and errors permit. Preserve the baseline measurement protocol and record failures.
+- Verify regional pricing, quota and capacity before provisioning. Prepare a separate two-GPU budget; the initial hourly estimate above applies only to the single-GPU setup.
+- Treat 4B versus 14B results as a model-and-hardware comparison. More GPUs do not guarantee faster individual requests, and serving benchmarks do not establish model quality.
+- Optionally compare Qwen3-4B on the same two-GPU node: one single-GPU replica, two independent single-GPU replicas, and one two-GPU tensor-parallel replica. See the [implementation guide](PHASE_1_INFERENCE_FIG.md#10-two-gpu-learning-lab) for controls.
+
+### 7. Document findings and clean up
 
 - Produce a short report with the baseline, experiment hypothesis, configuration change, results, charts, and limitations.
 - Preserve benchmark artifacts and document how to reproduce the experiment.
@@ -108,16 +119,21 @@ Calculate estimated cost per million output tokens as `(total hourly serving cos
 - Logs and serving/GPU metrics are available for diagnosis.
 - The baseline covers the planned workload and concurrency matrix, with failures recorded.
 - One controlled optimization experiment has repeatable before/after evidence and an explanation of its tradeoffs.
+- Qwen3-14B serves on two L4 GPUs with tensor parallelism; smoke tests, per-GPU telemetry and workload results document measured capacity and failures.
 - A results report records configuration, performance, estimated cost, and limitations.
 - Cleanup instructions are verified and remaining charges are documented.
 
 ## Follow-up learning
 
-After Phase 1, explore quantization with a small quality evaluation, larger models that create meaningful memory pressure, KV-cache precision, replica scaling, and multi-GPU parallelism. Add speculative decoding or prefill/decode disaggregation when the workload and hardware justify them. A small-model deployment alone does not establish deep experience with all inference optimization techniques.
+After these labs, explore quantization with a small quality evaluation, KV-cache precision, and larger models. Qwen3-32B has approximately 66 GB of BF16 weights alone; four L4s with tensor parallelism are a candidate configuration requiring memory, budget and capacity validation. A higher-memory GPU or quantization can change that requirement. Add speculative decoding or prefill/decode disaggregation when the workload and hardware justify them.
 
 ## References
 
 - [Qwen3-4B model card](https://huggingface.co/Qwen/Qwen3-4B)
+- [Qwen3-14B model card](https://huggingface.co/Qwen/Qwen3-14B)
+- [Qwen3-32B model card](https://huggingface.co/Qwen/Qwen3-32B)
+- [GCP GPU machine specifications](https://docs.cloud.google.com/compute/docs/gpus)
+- [vLLM parallelism and scaling](https://docs.vllm.ai/en/latest/serving/parallelism_scaling/)
 - [GKE GPU serving with vLLM](https://docs.cloud.google.com/kubernetes-engine/docs/tutorials/serve-llama-gpus-vllm)
 - [vLLM benchmark tooling](https://github.com/vllm-project/vllm/blob/main/docs/benchmarking/cli.md)
 - [vLLM optimization and tuning](https://docs.vllm.ai/en/latest/configuration/optimization/)

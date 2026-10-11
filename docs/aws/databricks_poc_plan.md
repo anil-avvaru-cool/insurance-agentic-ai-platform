@@ -226,7 +226,7 @@ has no account-level APIs; do not assume account-level identity provisioning.
    resources when finished and verify remaining billing. Preserve app/Bedrock data.
 
 For repeatability, implement a separate Terraform root such as
-`infra/aws/terraform/databricks_poc`, with AWS and Databricks providers. This file
+`infra/pocs/aws_databricks`, with AWS and Databricks providers. This file
 plans that work; no Terraform implementation or deployment is claimed.
 If compute must run in your own VPC, plan a classic workspace separately with
 network/workspace infrastructure and additional cost.

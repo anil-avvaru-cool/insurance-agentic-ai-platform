@@ -1,6 +1,6 @@
 # Insurance agentic AI platform
 
-Start with the [Phase 1 AWS POC plan](docs/aws/PHASE_1_AWS_POC_PLAN.md) and [Terraform setup](infra/aws/terraform/README.md) for the AWS deployment scope and sequence.
+Start with the [Phase 1 AWS POC plan](docs/aws/PHASE_1_AWS_POC_PLAN.md) and [Terraform setup](infra/pocs/aws_bedrock/README.md) for the AWS deployment scope and sequence.
 
 The [AWS POC policy corpus](data/sample_insurance_policies/README.md) contains four synthetic
 policy PDFs and expected coverage question answers for the AWS coverage POC.
@@ -16,7 +16,7 @@ systems are not connected. The broader Phase 1 rollout remains pending; see the
 
 Phase 1B has started with selectable PostgreSQL planning/review checkpoints and
 a recovery evaluation runner. See the [spike runbook](docs/PHASE_1B_SPIKE.md)
-for migration and verification commands. The [Terraform foundation](infra/aws/terraform/README.md)
+for migration and verification commands. The [Terraform foundation](infra/pocs/aws_bedrock/README.md)
 adds separate bootstrap/development roots for state, RDS, SQS and service identities;
 AWS deployment remains pending. Existing `.env` files now require
 `CHECKPOINT_BACKEND=sqlite` to keep the local setup.
@@ -153,7 +153,7 @@ After applying the development Terraform changes, run:
 
 ```sh
 PYTHONPATH=src uv run --locked python scripts/ingest_poc.py \
-  --terraform-dir infra/aws/terraform/development
+  --terraform-dir infra/pocs/aws_bedrock
 ```
 
 The command reads Terraform outputs, validates all four policies and metadata,

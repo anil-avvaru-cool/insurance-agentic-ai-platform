@@ -92,7 +92,7 @@ The current handler returns `answer`, `citations`, and `request_id` on success, 
 
 **Order: first.** Reuse the existing bootstrap deployment if already provisioned. These six resources are separate from the development root.
 
-Source: [bootstrap/main.tf](../../infra/aws/terraform/bootstrap/main.tf).
+Source: [bootstrap/main.tf](../../infra/common_state/aws/bootstrap/main.tf).
 
 | Terraform resource | Category | Status | Purpose |
 |---|---|---|---|
@@ -109,7 +109,7 @@ Backend locking uses the configured S3 lockfile; no DynamoDB lock table is plann
 
 **Order: after bootstrap, before the first AWS ingestion run.** The implementation retains all 13 resources below. The versioning configuration resource is always defined; versioning is suspended by default and enabled with `knowledge_bucket_versioning_enabled = true`.
 
-Sources: [bedrock.tf](../../infra/aws/terraform/development/bedrock.tf) and [ingestion.tf](../../infra/aws/terraform/development/ingestion.tf).
+Sources: [bedrock.tf](../../infra/pocs/aws_bedrock/bedrock.tf) and [ingestion.tf](../../infra/pocs/aws_bedrock/ingestion.tf).
 
 | Terraform resource | Category | Status | Purpose and dependency |
 |---|---|---|---|
@@ -252,7 +252,7 @@ These resources implement the Phase 1 workloads and do **not** add to the Terraf
 | [test_offline_ingestion.py](../../tests/unit/test_offline_ingestion.py) | Local workload orchestration with AWS mocks | Checks approved uploads, configuration mismatches, concurrent runs, partial failures, job/document failures, timeouts, uncertain responses, reruns, revised document IDs, and unknown remote inventory. Does not establish live indexing or removal of obsolete content. |
 | [test_query_lambda.py](../../tests/unit/test_query_lambda.py) | Handler with simulated IAM context and mocked Bedrock | Checks missing/unapproved-identity rejection, owner-and-LOB retrieval filters, synthetic customer selection, invalid inputs, citation handling, and insufficient evidence. Does not exercise IAM verification at API Gateway or model answer accuracy. |
 | [test_journey.py](../../tests/integration/test_journey.py) | Local FastAPI `TestClient`, temporary SQLite stores, synthetic core and identities | Existing claims-intake/service integration regression suite, including ownership and restart behavior. It does not exercise the Phase 1 Lambda/API Gateway/Knowledge Base path and cannot satisfy Phase 1 deployed acceptance. |
-| [phase1.tftest.hcl](../../infra/aws/terraform/development/tests/phase1.tftest.hcl) and [foundation.tftest.hcl](../../infra/aws/terraform/development/tests/foundation.tftest.hcl) | Terraform with mocked providers | Validate infrastructure configuration and deployment gates; do not prove AWS resource readiness or workload behavior. |
+| [phase1.tftest.hcl](../../infra/pocs/aws_bedrock/tests/phase1.tftest.hcl) and [foundation.tftest.hcl](../../infra/pocs/aws_bedrock/tests/foundation.tftest.hcl) | Terraform with mocked providers | Validate infrastructure configuration and deployment gates; do not prove AWS resource readiness or workload behavior. |
 | Phase 1 live retrieval and replacement checks | AWS; required, dedicated runner pending | Retrieve all four documents with correct sources and owner/LOB filters, then revise and reingest a policy and verify new content is returned and superseded content is absent. Preserve a reviewable validation report before enabling queries. |
 | [test_online_rag.py](../../scripts/test_online_rag.py) | Deployed AWS API; runner implemented, live execution pending | Runs exactly one fixture selected by required `--case-id` per invocation, using the operator's AWS credentials for SigV4 signing. Checks response shape, request IDs, citations, expected amounts, and controlled insufficient-information behavior for the selected case. Test both customers and unsupported questions through separate invocations. Saves responses and request IDs. Missing/invalid-signature and invalid customer/question/LOB checks are not run. Another-principal verification requires separate credentials and is recorded as not run. Human answer/citation review, authentication-negative and invalid-input checks, replacement checks, controlled backend failures, and CloudWatch evidence remain required. See [online RAG evaluation](ONLINE_RAG_EVALUATION.md). |
 
@@ -276,7 +276,7 @@ After provisioning the offline resources and operator permissions, run the AWS w
 
 ```sh
 PYTHONPATH=src uv run --locked python scripts/ingest_poc.py \
-  --terraform-dir infra/aws/terraform/development
+  --terraform-dir infra/pocs/aws_bedrock
 ```
 
 A successful local test run, ZIP build, or ingestion report does not close the live retrieval, authentication, answer-quality, or telemetry gates above.
@@ -316,5 +316,5 @@ Implemented defaults: operator-only IAM signatures; 14-day retention; log-derive
 ## Related files
 
 - [Phase 1 requirements and completion criteria](PHASE_1_AWS_POC_PLAN.md)
-- [Terraform setup and teardown](../../infra/aws/terraform/README.md)
+- [Terraform setup and teardown](../../infra/pocs/aws_bedrock/README.md)
 - [Offline ingestion runbook](OFFLINE_INGESTION.md)

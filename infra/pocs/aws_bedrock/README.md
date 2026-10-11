@@ -17,13 +17,13 @@ the offline foundation first, then the query API after offline validation passes
 | 6 | **Evaluate answers with a Bedrock judge.** Deploy opt-in evidence capture and judge resources, configure evaluators, then prepare, capture, export, upload, submit, check status and collect the six-case results. Review all three metrics and retain review notes. | [RAG judge evaluation](../../../docs/aws/RAG_JUDGE_EVALUATION.md) and [optional judge infrastructure](#optional-bedrock-judge). |
 
 These steps describe the workflow; they do not establish deployment or acceptance
-status. See [pending work](../../../docs/PHASE_1_PENDING_WORK.md) for remaining
-implementation and live verification.
+status. Use the [Phase 1 completion criteria](../../../docs/aws/PHASE_1_AWS_POC_PLAN.md#completion-criteria)
+to track implementation and live verification.
 
 ## Infrastructure scope
 
-- `bootstrap` manages the Terraform state bucket.
-- `development` defines 22 resources by default: the original 13 offline resources, a validation-runner policy, an ingestion log group, six ingestion/index metric filters, and a dashboard. Enabling the query API adds 24 resources. Each configured operator policy attachment adds one.
+- `infra/common_state/aws/bootstrap` manages the shared Terraform state bucket.
+- `infra/pocs/aws_bedrock` defines 22 resources by default: the original 13 offline resources, a validation-runner policy, an ingestion log group, six ingestion/index metric filters, and a dashboard. Enabling the query API adds 24 resources. Each configured operator policy attachment adds one.
 - Setting `ingestion_runner_role_name` adds one policy attachment to an existing operator role. Otherwise attach the exported policy through your identity system before ingestion.
 - RDS checkpoints, custom VPC networking, SQS, ECS roles, ECR and the AgentCore runtime are outside this POC and have been removed from these roots.
 - API Gateway, ZIP Lambda deployment, operator-only IAM authentication, and CloudWatch observability are defined. The query handler and reproducible artifact build are included; ingestion telemetry emission and live acceptance checks remain application work, so infrastructure alone does not complete Phase 1.
@@ -39,13 +39,13 @@ The previous 39-resource development plan is obsolete. Generate and review a fre
 - From the repository directory:
 
   ```sh
-  terraform fmt -check -recursive infra/aws/terraform
-  terraform -chdir=infra/aws/terraform/bootstrap init -backend=false
-  terraform -chdir=infra/aws/terraform/bootstrap validate
-  terraform -chdir=infra/aws/terraform/bootstrap test
-  terraform -chdir=infra/aws/terraform/development init -backend=false
-  terraform -chdir=infra/aws/terraform/development validate
-  terraform -chdir=infra/aws/terraform/development test
+  terraform fmt -check -recursive infra
+  terraform -chdir=infra/common_state/aws/bootstrap init -backend=false
+  terraform -chdir=infra/common_state/aws/bootstrap validate
+  terraform -chdir=infra/common_state/aws/bootstrap test
+  terraform -chdir=infra/pocs/aws_bedrock init -backend=false
+  terraform -chdir=infra/pocs/aws_bedrock validate
+  terraform -chdir=infra/pocs/aws_bedrock test
   ```
 
 - Tests use a mocked AWS provider and plan only.
@@ -71,15 +71,15 @@ must already exist; the state-access helper does not create it.
 - Preview the real resource changes before applying:
 
   ```sh
-  terraform -chdir=infra/aws/terraform/bootstrap init
-  terraform -chdir=infra/aws/terraform/bootstrap plan -out=bootstrap.tfplan
-  terraform -chdir=infra/aws/terraform/bootstrap show bootstrap.tfplan
+  terraform -chdir=infra/common_state/aws/bootstrap init
+  terraform -chdir=infra/common_state/aws/bootstrap plan -out=bootstrap.tfplan
+  terraform -chdir=infra/common_state/aws/bootstrap show bootstrap.tfplan
   ```
 
 - After reviewing the plan, an authorized operator can apply it:
 
   ```sh
-  terraform -chdir=infra/aws/terraform/bootstrap apply bootstrap.tfplan
+  terraform -chdir=infra/common_state/aws/bootstrap apply bootstrap.tfplan
   ```
 
 - Move bootstrap state into the created bucket: add an ignored `remote_override.tf` file in the bootstrap root containing:
@@ -107,13 +107,13 @@ must already exist; the state-access helper does not create it.
 - Using the bootstrap deployment identity's credentials, run:
 
   ```sh
-  terraform -chdir=infra/aws/terraform/bootstrap init -migrate-state -backend-config=bootstrap.s3.tfbackend
+  terraform -chdir=infra/common_state/aws/bootstrap init -migrate-state -backend-config=bootstrap.s3.tfbackend
   ```
 
 - Keep the override and backend config available to each bootstrap operator; future checkouts must configure that remote backend before planning.
 - Verify the remote state before securely disposing of local state copies.
 - Never recreate bootstrap resources from an empty local state.
-- Copy `development/development.s3.tfbackend.example` to `development/development.s3.tfbackend` and fill it in.
+- Copy `infra/pocs/aws_bedrock/development.s3.tfbackend.example` to `infra/pocs/aws_bedrock/development.s3.tfbackend` and fill it in.
 - Before initializing the development backend, grant the development deployment
   identity access to the `development` state key using the
   [AWS CLI helper below](#grant-state-access-with-the-aws-cli) or the account's
@@ -122,27 +122,27 @@ must already exist; the state-access helper does not create it.
 - Using the development deployment identity's credentials, initialize and plan:
 
   ```sh
-  terraform -chdir=infra/aws/terraform/development init -reconfigure -backend-config=development.s3.tfbackend
-  terraform -chdir=infra/aws/terraform/development plan -out=development.tfplan
-  terraform -chdir=infra/aws/terraform/development show development.tfplan
+  terraform -chdir=infra/pocs/aws_bedrock init -reconfigure -backend-config=development.s3.tfbackend
+  terraform -chdir=infra/pocs/aws_bedrock plan -out=development.tfplan
+  terraform -chdir=infra/pocs/aws_bedrock show development.tfplan
 
   # Save text file for easy review
-  terraform -chdir=infra/aws/terraform/development show -no-color development.tfplan > tfout.txt
+  terraform -chdir=infra/pocs/aws_bedrock show -no-color development.tfplan > tfout.txt
 
   # Group main resources, review before deploying billable resources
   uv run --locked python scripts/group_terraform_plan.py tfout.txt > tf_group_resources.txt
 
   # Optinal, Save image file for easy review dependencies
-  terraform -chdir=infra/aws/terraform/development graph | dot -Tpng > tfgraph.png
+  terraform -chdir=infra/pocs/aws_bedrock graph | dot -Tpng > tfgraph.png
   ```
 
 - After reviewing the concrete plan, an authorized operator can apply it:
 
   ```sh
-  terraform -chdir=infra/aws/terraform/development apply development.tfplan
+  terraform -chdir=infra/pocs/aws_bedrock apply development.tfplan
 
   # Review deployed resources
-  terraform -chdir=infra/aws/terraform/development state list
+  terraform -chdir=infra/pocs/aws_bedrock state list
   ```
 
 - The backend uses [native S3 locking](https://developer.hashicorp.com/terraform/language/backend/s3).
@@ -339,8 +339,8 @@ bash scripts/empty_s3_bucket.sh \
   account_number \
   --region us-east-1
 
-terraform -chdir=infra/aws/terraform/development plan -destroy -out=teardown.tfplan
-terraform -chdir=infra/aws/terraform/development show teardown.tfplan
+terraform -chdir=infra/pocs/aws_bedrock plan -destroy -out=teardown.tfplan
+terraform -chdir=infra/pocs/aws_bedrock show teardown.tfplan
 ```
 
 Document and vector buckets use `force_destroy = false`. Nonempty buckets may
