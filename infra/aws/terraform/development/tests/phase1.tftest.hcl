@@ -144,13 +144,13 @@ run "judge_disabled" {
 }
 run "judge_requires_evaluators" {
   command = plan
-  variables { enable_rag_judge = true }
+  variables { enable_rag_judge_infra = true }
   expect_failures = [aws_iam_role.rag_judge]
 }
 run "judge_scoped_permissions" {
   command = apply
   variables {
-    enable_rag_judge                = true
+    enable_rag_judge_infra          = true
     judge_evaluator_model_id        = "amazon.nova-pro-v1:0"
     judge_custom_evaluator_model_id = "amazon.nova-lite-v1:0"
   }

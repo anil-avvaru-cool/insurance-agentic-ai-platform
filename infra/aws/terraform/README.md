@@ -363,7 +363,7 @@ for configuration, the single-case command, and teardown.
 
 ### Optional Bedrock judge
 
-`enable_rag_judge = true` adds a separate private SSE-S3 bucket, Bedrock evaluation
+`enable_rag_judge_infra = true` adds a separate private SSE-S3 bucket, Bedrock evaluation
 role and scoped operator policy. Set both `judge_evaluator_model_id` and
 `judge_custom_evaluator_model_id` to supported regional model IDs. Optionally set
 `judge_operator_role_name`; otherwise attach the exported policy yourself.

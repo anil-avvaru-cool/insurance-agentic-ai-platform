@@ -1,4 +1,4 @@
-variable "enable_rag_judge" {
+variable "enable_rag_judge_infra" {
   description = "Create optional evaluation storage and IAM only; never submits a paid judge job."
   type        = bool
   default     = false
@@ -27,7 +27,7 @@ variable "judge_operator_role_name" {
   default     = null
 }
 locals {
-  judge_count         = var.enable_rag_judge ? 1 : 0
+  judge_count         = var.enable_rag_judge_infra ? 1 : 0
   judge_input_prefix  = "datasets/"
   judge_output_prefix = "results/"
   judge_job_arn       = "arn:aws:bedrock:${var.aws_region}:${var.aws_account_id}:evaluation-job/*"
@@ -115,15 +115,15 @@ resource "aws_iam_policy" "rag_judge_operator" {
   ] })
 }
 resource "aws_iam_role_policy_attachment" "rag_judge_operator" {
-  count      = var.enable_rag_judge && var.judge_operator_role_name != null ? 1 : 0
+  count      = var.enable_rag_judge_infra && var.judge_operator_role_name != null ? 1 : 0
   role       = var.judge_operator_role_name
   policy_arn = aws_iam_policy.rag_judge_operator[0].arn
 }
 output "rag_judge_operator_policy_arn" {
-  value = var.enable_rag_judge ? aws_iam_policy.rag_judge_operator[0].arn : null
+  value = var.enable_rag_judge_infra ? aws_iam_policy.rag_judge_operator[0].arn : null
 }
 output "rag_judge_environment" {
-  value = var.enable_rag_judge ? {
+  value = var.enable_rag_judge_infra ? {
     JUDGE_REGION                    = var.aws_region
     JUDGE_EVALUATOR_MODEL_ID        = var.judge_evaluator_model_id
     JUDGE_CUSTOM_EVALUATOR_MODEL_ID = var.judge_custom_evaluator_model_id

@@ -7,7 +7,7 @@
 
 ## Deployment preparation
 
-- In `infra/aws/terraform/development/terraform.tfvars`, set `enable_rag_judge = true`, `judge_evaluator_model_id`, and `judge_custom_evaluator_model_id` to supported regional foundation models. Inference profiles require additional IAM configuration and are not covered by this Terraform setup.
+- In `infra/aws/terraform/development/terraform.tfvars`, set `enable_rag_judge_infra = true`, `judge_evaluator_model_id`, and `judge_custom_evaluator_model_id` to supported regional foundation models. Inference profiles require additional IAM configuration and are not covered by this Terraform setup.
 - Set `judge_operator_role_name` to an existing operator role, or attach the exported `rag_judge_operator_policy_arn` through your identity system. The operator also needs the existing API invocation/capture-read permissions for capture.
 - Judge storage uses private S3, SSE-S3 encryption, TLS-only access and `force_destroy = false`. The Bedrock service role reads `datasets/`, writes `results/`, and accesses the configured evaluator models. No new Knowledge Base is created. This setup does not use customer-managed KMS keys.
 - Enable the query API and `enable_evaluation_capture`, build the query ZIP and review its deployment as described in [evidence capture](ONLINE_RAG_EVALUATION.md#exact-evidence-capture-for-judge-evaluation).

@@ -6,7 +6,7 @@ Evaluate six insurance API answers with an Amazon Bedrock LLM judge using actual
 
 ## Prerequisites
 
-- Deploy and validate the ingested corpus and query API. Enable `enable_evaluation_capture` and `enable_rag_judge` in development Terraform, configure both supported regional evaluator model IDs, and grant the operator API, capture-read and judge permissions.
+- Deploy and validate the ingested corpus and query API. Enable `enable_evaluation_capture` and `enable_rag_judge_infra` in development Terraform, configure both supported regional evaluator model IDs, and grant the operator API, capture-read and judge permissions.
 - Populate `.env` from [example.env](../../example.env). Copy the `rag_judge_environment` and `evaluation_capture_environment` Terraform outputs; set the query endpoint, deployed ZIP hash, answer model/KB IDs, and all judge pricing, budget and token bounds. Pricing must be dated within 30 days.
 - Use a unique dataset S3 key and local report directory for each new run. Commands below run from the repository root. `capture` and `submit` invoke paid services; Terraform does not submit jobs.
 
