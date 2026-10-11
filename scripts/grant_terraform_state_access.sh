@@ -3,8 +3,8 @@
 set -euo pipefail
 
 if [[ $# -ne 4 ]]; then
-  echo "Usage: bash $0 BUCKET bootstrap|development role|user IDENTITY_NAME" >&2
-  echo "Example: AWS_PROFILE=admin bash $0 my-state-bucket development role TerraformDevelopment" >&2
+  echo "Usage: bash $0 BUCKET infra/common_state/aws/bootstrap|infra/pocs/aws_bedrock|infra/pocs/gcp_inference role|user IDENTITY_NAME" >&2
+  echo "Example: AWS_PROFILE=admin bash $0 my-state-bucket infra/pocs/aws_bedrock role TerraformDevelopment" >&2
   exit 2
 fi
 
@@ -18,8 +18,8 @@ if [[ ! $state_bucket =~ ^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$ ]]; then
   exit 2
 fi
 case "$state_root" in
-  bootstrap|development) ;;
-  *) echo "State root must be bootstrap or development." >&2; exit 2 ;;
+  infra/common_state/aws/bootstrap|infra/pocs/aws_bedrock|infra/pocs/gcp_inference) ;;
+  *) echo "State root must be infra/common_state/aws/bootstrap, infra/pocs/aws_bedrock, or infra/pocs/gcp_inference." >&2; exit 2 ;;
 esac
 case "$identity_type" in
   role|user) ;;
@@ -35,7 +35,8 @@ if [[ $identity_type == role && $identity_name == AWSReservedSSO_* ]]; then
 fi
 
 state_key="$state_root/terraform.tfstate"
-policy_name="TerraformState-$state_bucket-$state_root"
+policy_suffix=${state_root//\//_}
+policy_name="TerraformState-$state_bucket-$policy_suffix"
 policy_document=$(cat <<EOF
 {
   "Version": "2012-10-17",

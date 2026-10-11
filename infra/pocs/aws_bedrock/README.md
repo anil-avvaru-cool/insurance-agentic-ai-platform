@@ -66,12 +66,19 @@ must already exist; the state-access helper does not create it.
 - Both providers restrict the target account; also configure the backend account restriction.
 - Copy each `terraform.tfvars.example` to `terraform.tfvars` in its own directory and replace the account and backend placeholders.
 - Examples are not deployable.
-- The bootstrap root initially uses local state.
+- Fresh start: the operator reports the previous S3 buckets were deleted.
+  Confirm surviving resources and reconcile them before using empty state.
+- Review old local state, backend caches and saved plans before initialization.
+  Archive stale artifacts after review; do not migrate them into the new bucket.
+- The bootstrap root initially uses local state. An old ignored
+  `remote_override.tf` must be moved out of the root before this local bootstrap;
+  add it back only after the new bucket is created. Initialize a clean local
+  backend with `init -reconfigure` if previous backend metadata remains.
 - Keep that state protected until migration.
 - Preview the real resource changes before applying:
 
   ```sh
-  terraform -chdir=infra/common_state/aws/bootstrap init
+  terraform -chdir=infra/common_state/aws/bootstrap init -reconfigure
   terraform -chdir=infra/common_state/aws/bootstrap plan -out=bootstrap.tfplan
   terraform -chdir=infra/common_state/aws/bootstrap show bootstrap.tfplan
   ```
@@ -93,7 +100,7 @@ must already exist; the state-access helper does not create it.
 - Also create an ignored `bootstrap.s3.tfbackend` similar to following and replace correct values.
   ```sh
   bucket = "xxx"
-  key = "bootstrap/terraform.tfstate"
+  key = "infra/common_state/aws/bootstrap/terraform.tfstate"
   encrypt = true
   use_lockfile = true
   region = "us-east-1"
@@ -101,7 +108,7 @@ must already exist; the state-access helper does not create it.
   ```
 
 - Before migrating, grant the bootstrap deployment identity access to the
-  `bootstrap` state key using the [AWS CLI helper below](#grant-state-access-with-the-aws-cli)
+  `infra/common_state/aws/bootstrap/terraform.tfstate` state key using the [AWS CLI helper below](#grant-state-access-with-the-aws-cli)
   or the account's deployment identity management. If the identity already has
   the required permissions, no additional grant is needed.
 - Using the bootstrap deployment identity's credentials, run:
@@ -115,7 +122,7 @@ must already exist; the state-access helper does not create it.
 - Never recreate bootstrap resources from an empty local state.
 - Copy `infra/pocs/aws_bedrock/development.s3.tfbackend.example` to `infra/pocs/aws_bedrock/development.s3.tfbackend` and fill it in.
 - Before initializing the development backend, grant the development deployment
-  identity access to the `development` state key using the
+  identity access to the `infra/pocs/aws_bedrock/terraform.tfstate` state key using the
   [AWS CLI helper below](#grant-state-access-with-the-aws-cli) or the account's
   deployment identity management. If the identity already has the required
   permissions, no additional grant is needed. Workload roles have no state access.
@@ -155,11 +162,12 @@ For an existing deployment IAM user or role, run the helper before initializing 
 
 ```sh
 AWS_PROFILE=YOUR_ADMIN_PROFILE bash scripts/grant_terraform_state_access.sh \
-  YOUR_STATE_BUCKET development role YOUR_DEPLOYMENT_ROLE
+  YOUR_STATE_BUCKET infra/pocs/aws_bedrock role YOUR_DEPLOYMENT_ROLE
 ```
 
 - Use the bucket name from `.s3.tfbackend`, without `s3://`.
-- Replace `development` with `bootstrap` for bootstrap state.
+- Use `infra/common_state/aws/bootstrap` for bootstrap state or
+  `infra/pocs/gcp_inference` for GCP state. The helper appends `/terraform.tfstate`.
 - For an IAM user, replace `role YOUR_DEPLOYMENT_ROLE` with `user YOUR_DEPLOYMENT_USER`. Supply names, not ARNs.
 - The admin profile needs `iam:PutRolePolicy` or `iam:PutUserPolicy`.
 
@@ -187,7 +195,7 @@ versioning does not delete them. Run ingestion again after replacing documents
 to update the knowledge base.
 Bootstrap state bucket versioning is also suspended for the POC. Existing versions
 remain stored, but future state overwrites do not preserve rollback history.
-Enable versioning in `bootstrap/main.tf` when state recovery history is required.
+Keep versioning suspended for POCs as required by [Agents.md](../../../Agents.md).
 
 The [Step 3 runbook](../../../docs/aws/OFFLINE_INGESTION.md) documents the repeatable CLI,
 POC parameters, IAM attachment, stable inventory and failure recovery. The
@@ -351,7 +359,9 @@ helper does not apply to this foundation and has been removed.
 Keep bootstrap and its state bucket until development and any older deployments
 using it have been removed. If bootstrap state is stored in that bucket, migrate
 it back to local state before planning bootstrap destruction. The bootstrap
-bucket uses `force_destroy = true`; destroying it deletes state history as well.
+bucket uses `force_destroy = false`; a nonempty bucket blocks destruction.
+Review and authorize removal of state objects and any existing versions before
+emptying the bucket.
 ### Optional evaluation evidence capture
 
 `enable_evaluation_capture = true` adds private encrypted S3 capture storage and

@@ -30,3 +30,6 @@ Allowed for learning.
 
 ## Planning:
 Make sure to check latest reliable documentation before making a plan
+
+## Storage
+Do not use storage/s3 bucket versioning for POCs

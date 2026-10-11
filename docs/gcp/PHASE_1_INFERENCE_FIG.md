@@ -1,35 +1,45 @@
 # Phase 1: GCP inference implementation guide
 
 Companion to [PHASE_1_INFERENCE_PLAN.md](PHASE_1_INFERENCE_PLAN.md).
-Status: proposed GCP lab; AWS remote-state verification is pending. No GCP
-deployment or performance result is claimed by this document.
+Status: proposed GCP lab; shared S3 state infrastructure must be recreated.
+No GCP deployment or performance result is claimed by this document.
 
 ## Infrastructure layout and state review
 
-- Shared state infrastructure lives in
-  `infra/common_state/aws/bootstrap`; it manages an AWS S3 bucket for POCs
-  across AWS, GCP, and Azure. Each independent POC uses a separate state key.
-- The existing Bedrock root is `infra/pocs/aws_bedrock`. Its remote state key
-  remains `development/terraform.tfstate`; bootstrap retains
-  `bootstrap/terraform.tfstate`. Directory moves do not change state ownership.
-- The proposed GCP root is `infra/pocs/gcp_inference`. It has no provisioning
-  configuration yet. See the [infrastructure README](../../infra/README.md).
-- Remote state verification is pending because the AWS login session expired.
-  Local configuration does not establish deployed resource IDs or readiness.
-  Keep account IDs, bucket names, endpoints, credentials, and raw state out of
+- Use one shared AWS S3 state bucket, managed by
+  `infra/common_state/aws/bootstrap`, with one independent state key per root:
+
+  | Terraform root | S3 state key |
+  | --- | --- |
+  | `infra/common_state/aws/bootstrap` | `infra/common_state/aws/bootstrap/terraform.tfstate` |
+  | `infra/pocs/aws_bedrock` | `infra/pocs/aws_bedrock/terraform.tfstate` |
+  | `infra/pocs/gcp_inference` | `infra/pocs/gcp_inference/terraform.tfstate` |
+
+- The previous S3 buckets were deleted, according to the operator. Treat this
+  as a fresh bootstrap, not a directory rename preserving old remote state.
+  Confirm any surviving cloud resources and reconcile them before using empty
+  state; bucket deletion alone does not establish that POC resources are gone.
+- Review remaining local state, backend caches, overrides and saved plans before
+  initialization. Do not reuse stale state or migrate it blindly into the new
+  bucket. Create the bucket with local bootstrap state, then migrate that newly
+  created state to its S3 key. See the
+  [bootstrap runbook](../../infra/pocs/aws_bedrock/README.md#bootstrap-and-plan).
+- Keep versioning suspended for POCs and `force_destroy = false`. Enable native
+  S3 locking with `use_lockfile = true`; grant access to each root's state and
+  `.tflock` objects. Keep the shared bucket until all dependent POCs are removed.
+- S3 backend access requires AWS credentials even for the GCP POC; provisioning
+  GCP also requires Google Cloud credentials.
+- The GCP root has no provisioning configuration yet. See the
+  [infrastructure README](../../infra/README.md).
+- Keep account IDs, bucket names, endpoints, credentials and raw state out of
   this guide; supply deployment values through ignored local configuration.
 - [Agents.md](../../Agents.md) prefers cloud-managed model services and explicitly
   allows inference frameworks such as vLLM. This GKE/vLLM lab is permitted.
 
-After refreshing AWS credentials, inspect the existing POC's remote state:
-
-```bash
-terraform -chdir=infra/pocs/aws_bedrock state list
-```
-
-State describes Terraform's last saved view; it does not prove endpoint health
-or current cloud drift. Never use the Bedrock root to provision or destroy the
-GCP lab.
+After recreating and configuring the shared backend, inspect each initialized
+root's state. State describes Terraform's last saved view; it does not prove
+endpoint health or current cloud drift. Never use the Bedrock root to provision
+or destroy the GCP lab.
 
 ## 1. Review and scope
 

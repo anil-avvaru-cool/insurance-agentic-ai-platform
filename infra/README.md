@@ -14,7 +14,7 @@ infra/
 - `aws_delete_me` retains the legacy AgentCore Dockerfile and local runtime
   variables for review; it is outside the active Terraform roots.
 - Bootstrap manages the state bucket, not POC resources. Bucket versioning is
-  intentionally suspended and `force_destroy = true` for these POCs.
+  intentionally suspended and `force_destroy = false` for these POCs.
 - S3 backend access requires AWS credentials, including for GCP/Azure POCs;
   provisioning also requires credentials for the target cloud.
 - Keep actual account IDs, bucket names, credentials, backend inputs, state,
@@ -22,25 +22,25 @@ infra/
 - Enable native S3 locking with `use_lockfile = true`; scope access to each
   POC's state and lock objects.
 
-## Existing directory migration
+## Fresh-start state layout
 
-- Bootstrap moved to `common_state/aws/bootstrap` and retains
-  `bootstrap/terraform.tfstate`.
-- Development moved to `pocs/aws_bedrock` and retains
-  `development/terraform.tfstate`. Its environment remains `development` to
-  preserve resource names. Existing `development.s3.tfbackend` filenames remain.
-- Local backend inputs, variables, provider caches, and lockfiles move with their
-  roots. No remote state migration, apply, or destroy is needed for this rename.
-- Discard old saved plans; generate a fresh plan from the new root before applying.
+Use the default Terraform workspace and mirror each root's repository path:
 
-With refreshed AWS credentials, reconfigure using the existing ignored inputs:
+| Terraform root | S3 state key |
+| --- | --- |
+| `infra/common_state/aws/bootstrap` | `infra/common_state/aws/bootstrap/terraform.tfstate` |
+| `infra/pocs/aws_bedrock` | `infra/pocs/aws_bedrock/terraform.tfstate` |
+| `infra/pocs/gcp_inference` | `infra/pocs/gcp_inference/terraform.tfstate` |
 
-```bash
-terraform -chdir=infra/common_state/aws/bootstrap init -reconfigure -backend-config=bootstrap.s3.tfbackend
-terraform -chdir=infra/pocs/aws_bedrock init -reconfigure -backend-config=development.s3.tfbackend
-terraform -chdir=infra/pocs/aws_bedrock plan
-```
-
-Confirm the backend keys still match and review any proposed changes. Do not
-initialize against an empty state or change backend keys during this rename.
-See the [Bedrock runbook](pocs/aws_bedrock/README.md) for deployment steps.
+- The operator reports that the previous S3 buckets were deleted. Recreate the
+  shared bucket before initializing POC backends.
+- Confirm surviving cloud resources and review local state, backend caches,
+  overrides and saved plans before using empty state. Reconcile any surviving
+  resources rather than provisioning duplicates.
+- Bootstrap starts with local state; migrate its newly created state into S3
+  after the bucket exists. Do not migrate stale state from the previous setup.
+- Configure each POC's backend with its dedicated key and matching IAM access.
+- Bedrock's resource environment and backend filename remain `development`;
+  these do not determine its S3 key.
+- Generate and review fresh plans before applying. Follow the
+  [Bedrock bootstrap runbook](pocs/aws_bedrock/README.md#bootstrap-and-plan).
