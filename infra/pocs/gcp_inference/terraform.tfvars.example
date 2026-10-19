@@ -1,0 +1,50 @@
+# Deployment inputs for section 4.
+# Copy to terraform.tfvars (ignored) and replace YOUR_PROJECT_ID before use.
+project_id   = "YOUR_PROJECT_ID"
+project_name = "inference_lab"
+environment  = "development"
+owner        = "insurance_platform_team"
+
+# Candidate location supports G2; verify project quota and live capacity.
+region = "us-central1"
+zone   = "us-central1-a"
+
+# Zonal GKE Standard cluster; remove its default pool and use these two pools.
+release_channel = "REGULAR"
+node_image_type = "COS_CONTAINERD"
+
+cpu_machine_type = "e2-standard-2"
+cpu_node_count   = 1
+cpu_disk_type    = "pd-balanced"
+cpu_disk_size_gb = 50
+
+gpu_machine_type    = "g2-standard-4"
+gpu_type            = "nvidia-l4"
+gpu_count_per_node  = 1
+gpu_node_count      = 1
+gpu_disk_type       = "pd-balanced"
+gpu_disk_size_gb    = 100
+gpu_driver_version  = "DEFAULT"
+gpu_autoscaling     = false
+gpu_max_surge       = 0
+gpu_max_unavailable = 1
+
+# Dedicated VPC, subnet and secondary ranges; check for overlap before apply.
+subnet_cidr   = "10.40.0.0/24"
+pods_cidr     = "10.44.0.0/16"
+services_cidr = "10.48.0.0/20"
+
+# Private nodes require Cloud NAT for image/model downloads; include NAT cost.
+enable_private_nodes = true
+enable_cloud_nat     = true
+
+# Public control-plane endpoint restricted to your public IPv4 /32.
+# Documentation-only address: replace before use; never broaden to 0.0.0.0/0.
+master_authorized_cidrs = ["192.0.2.1/32"]
+
+# Allow teardown for this disposable lab; no automatic teardown is implied.
+deletion_protection = false
+
+# S3 backend settings belong in a separate ignored .tfbackend file.
+# Before apply, separately record session budget/teardown time, exact GKE
+# version, and serving image/model pins. These inputs do not enforce a budget.
