@@ -10,7 +10,6 @@ resource "google_project_iam_member" "nodes" {
 resource "google_container_cluster" "lab" {
   name                     = "${var.name}-gke"
   location                 = var.zone
-  node_locations           = [var.zone]
   network                  = var.network_id
   subnetwork               = var.subnetwork_id
   remove_default_node_pool = true
@@ -38,8 +37,9 @@ resource "google_container_cluster" "lab" {
     }
   }
   workload_identity_config { workload_pool = "${var.project_id}.svc.id.goog" }
-  logging_service    = "logging.googleapis.com/kubernetes"
-  monitoring_service = "monitoring.googleapis.com/kubernetes"
+  logging_config {
+    enable_components = ["SYSTEM_COMPONENTS","WORKLOADS"]    
+  }
   monitoring_config {
     enable_components = ["SYSTEM_COMPONENTS"]
     managed_prometheus { enabled = true }

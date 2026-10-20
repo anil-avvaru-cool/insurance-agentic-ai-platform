@@ -28,10 +28,20 @@ PARENT_TYPES = {
     'aws_iam_role_policy': 'aws_iam_role',
     'aws_bedrockagent_data_source': 'aws_bedrockagent_knowledge_base',
     'aws_cloudwatch_log_metric_filter': 'aws_cloudwatch_log_group',
+    'google_compute_subnetwork': 'google_compute_network',
+    'google_compute_router': 'google_compute_network',
+    'google_compute_router_nat': 'google_compute_router',
+    'google_container_node_pool': 'google_container_cluster',
+    'google_storage_bucket_iam_binding': 'google_storage_bucket',
+    'google_storage_bucket_iam_member': 'google_storage_bucket',
+    'google_storage_bucket_iam_policy': 'google_storage_bucket',
+    'google_service_account_iam_binding': 'google_service_account',
+    'google_service_account_iam_member': 'google_service_account',
+    'google_service_account_iam_policy': 'google_service_account',
 }
 ADDRESS = re.compile(
     r'^(?P<module>(?:module\.[\w-]+(?:\[(?:"(?:[^"\\]|\\.)*"|\d+)\])?\.)*)'
-    r'(?P<type>aws_\w+)\.(?P<name>[\w-]+)'
+    r'(?P<type>(?:aws|google)_\w+)\.(?P<name>[\w-]+)'
     r'(?P<index>\[(?:"(?:[^"\\]|\\.)*"|\d+)\])?$'
 )
 
@@ -62,14 +72,15 @@ def group_plan(plan):
             children[candidates[0]].append(address)
             nested.add(address)
 
+    def render(address, number, depth=0):
+        lines = [f'{"    " * depth}{number}{"." if depth == 0 else ""} {address}']
+        for child_number, child in enumerate(sorted(children[address]), start=1):
+            lines.extend(render(child, f'{number}.{child_number}', depth + 1))
+        return lines
+
     groups = []
     for group_number, address in enumerate(sorted(resources.keys() - nested), start=1):
-        groups.append('\n'.join(
-            [f'{group_number}. {address}'] + [
-                f'    {group_number}.{child_number} {child}'
-                for child_number, child in enumerate(sorted(children[address]), start=1)
-            ]
-        ))
+        groups.append('\n'.join(render(address, str(group_number))))
     return '\n\n'.join(groups)
 
 
@@ -82,7 +93,7 @@ def main():
     except OSError as error:
         parser.exit(1, f'{error}\n')
     if not result:
-        parser.exit(1, 'No AWS resource action headers found in the text plan.\n')
+        parser.exit(1, 'No AWS or GCP resource action headers found in the text plan.\n')
     print(result)
 
 
