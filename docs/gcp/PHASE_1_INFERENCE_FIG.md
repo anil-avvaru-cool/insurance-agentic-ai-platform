@@ -29,8 +29,8 @@ No GCP deployment or performance result is claimed by this document.
   `.tflock` objects. Keep the shared bucket until all dependent POCs are removed.
 - S3 backend access requires AWS credentials even for the GCP POC; provisioning
   GCP also requires Google Cloud credentials.
-- The GCP root has no provisioning configuration yet. See the
-  [infrastructure README](../../infra/README.md).
+- The GCP root now includes provisioning configuration. Follow the
+  [GCP Terraform runbook](../../infra/pocs/gcp_inference/README.md) for section 4.
 - Keep account IDs, bucket names, endpoints, credentials and raw state out of
   this guide; supply deployment values through ignored local configuration.
 - [Agents.md](../../Agents.md) prefers cloud-managed model services and explicitly
@@ -131,10 +131,10 @@ alerts notify; they do not stop spending. Record a teardown time for each lab.
 
 ## 4. Infrastructure to implement
 
-Create the dedicated Terraform configuration in `infra/pocs/gcp_inference`. The repository's AWS
-Terraform configurations are not GCP provisioning commands. The GCP configuration
-must define services, networking, GKE, node pools, service accounts, permissions,
-and outputs needed to obtain cluster credentials.
+Use the dedicated Terraform configuration in `infra/pocs/gcp_inference` and its
+[step-by-step runbook](../../infra/pocs/gcp_inference/README.md). It defines APIs,
+networking, GKE, node pools, node identity/IAM and credential-command outputs.
+The repository's AWS Terraform configurations are not GCP provisioning commands.
 
 Use one zone for the GPU pool and verify the planned total node count is one;
 node counts in multi-zone configurations can multiply across locations. Disable
@@ -162,9 +162,21 @@ kubectl describe nodes
 Replace uppercase placeholders before execution. Verify the current kubectl
 context belongs to the lab cluster before applying manifests or cleanup commands.
 
-## 5. Serving deployment to implement
+## 5. Serving deployment
 
-Create a dedicated namespace, a Deployment named `qwen3`, and a ClusterIP Service
+Deploy using the checked-in [serving runbook](../../infra/pocs/gcp_inference/serving/README.md)
+and these YAML files:
+
+- [namespace.yml](../../infra/pocs/gcp_inference/serving/namespace.yml): dedicated namespace.
+- [deployment.yml](../../infra/pocs/gcp_inference/serving/deployment.yml): pinned-image template, one L4, model cache, shared memory and health probes.
+- [service.yml](../../infra/pocs/gcp_inference/serving/service.yml): internal port 8000.
+- [example.env](../../infra/pocs/gcp_inference/serving/example.env): copy to ignored local `.env` and supply immutable pins.
+
+The runbook covers credentials, capacity checks, rendering, API dry-run, apply,
+rollout, smoke tests, troubleshooting and cleanup. Render the Deployment before
+applying it; no cloud deployment has been performed or verified by adding these files.
+
+The manifests create a dedicated namespace, a Deployment named `qwen3`, and a ClusterIP Service
 named `qwen3` on port 8000. Use one replica and a `Recreate` deployment strategy
 so an update does not wait for a second GPU. Request and limit one
 `nvidia.com/gpu`; select the intended GPU pool and tolerate its GPU taint.

@@ -1,0 +1,100 @@
+# Render with the explicit envsubst variable list in README.md before applying.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qwen3
+  namespace: inference-lab
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: qwen3
+  template:
+    metadata:
+      labels:
+        app: qwen3
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      nodeSelector:
+        cloud.google.com/gke-nodepool: "${GPU_POOL}"
+        cloud.google.com/gke-accelerator: nvidia-l4
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Equal
+          value: present
+          effect: NoSchedule
+      containers:
+        - name: vllm
+          image: "${VLLM_IMAGE}"
+          command: [python3, -m, vllm.entrypoints.openai.api_server]
+          args:
+            - --host
+            - 0.0.0.0
+            - --port
+            - "8000"
+            - --model
+            - Qwen/Qwen3-4B
+            - --revision
+            - "${MODEL_COMMIT}"
+            - --tokenizer-revision
+            - "${TOKENIZER_COMMIT}"
+            - --dtype
+            - bfloat16
+            - --max-model-len
+            - "4096"
+            - --tensor-parallel-size
+            - "1"
+            - --generation-config
+            - vllm
+            - --gpu-memory-utilization
+            - "0.90"
+            - --max-num-seqs
+            - "32"
+            - --max-num-batched-tokens
+            - "4096"
+          env:
+            - name: HF_HOME
+              value: /model_cache
+          ports:
+            - name: http
+              containerPort: 8000
+          resources:
+            requests:
+              cpu: "2"
+              memory: 10Gi
+              ephemeral-storage: 25Gi
+              nvidia.com/gpu: "1"
+            limits:
+              cpu: "3"
+              memory: 12Gi
+              ephemeral-storage: 40Gi
+              nvidia.com/gpu: "1"
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 180
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+          volumeMounts:
+            - name: model-cache
+              mountPath: /model_cache
+            - name: shared-memory
+              mountPath: /dev/shm
+      volumes:
+        - name: model-cache
+          emptyDir:
+            sizeLimit: 30Gi
+        - name: shared-memory
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Gi

@@ -42,6 +42,15 @@ terraform -chdir=infra/pocs/gcp_inference validate
 terraform -chdir=infra/pocs/gcp_inference test
 terraform -chdir=infra/pocs/gcp_inference plan -input=false -out=gcp.tfplan
 terraform -chdir=infra/pocs/gcp_inference show gcp.tfplan
+
+# Save text file for easy review
+terraform -chdir=infra/pocs/gcp_inference show -no-color gcp.tfplan > tfout.txt
+
+# Group main resources, review before deploying billable resources
+uv run --locked python scripts/group_terraform_plan.py tfout.txt > tf_group_resources.txt
+
+# Optinal, Save image file for easy review dependencies
+terraform -chdir=infra/pocs/gcp_inference graph | dot -Tpng > tfgraph.png
 ```
 
 Review one GPU node in one zone, the CPU count, networking and all billable
