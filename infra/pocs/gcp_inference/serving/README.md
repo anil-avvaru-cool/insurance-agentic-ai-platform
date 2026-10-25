@@ -4,7 +4,7 @@ Run from the repository root. These manifests implement section 5 of the
 [inference guide](../../../../docs/gcp/PHASE_1_INFERENCE_FIG.md).
 Prerequisites: `kubectl`, `gcloud` with its GKE auth plugin, `envsubst` (gettext),
 and the provisioned [GKE lab](../README.md#apply-and-verify). They do not create
-GPU nodes, monitoring, or a public endpoint. Kubernetes resource names use hyphens
+GPU nodes, cluster-wide monitoring, or a public endpoint. Kubernetes resource names use hyphens
 where required by DNS naming rules.
 
 ## 1. Connect and check capacity
@@ -29,6 +29,10 @@ container images plus cache/log storage. Adjust only after inspecting capacity.
 
 ```bash
 cp -n infra/pocs/gcp_inference/serving/example.env infra/pocs/gcp_inference/serving/.env
+# Select latest stable release from https://github.com/vllm-project/vllm/releases
+# Example: v0.32.0
+# Search the same tag in docker https://hub.docker.com/r/vllm/vllm-openai/tags
+# Example: Verify digest with command: docker buildx imagetools inspect vllm/vllm-openai:v0.32.0
 # Edit serving/.env with your reviewed image digest and model/tokenizer commits.
 # Model commit history: https://huggingface.co/Qwen/Qwen3-4B/commits/main
 # Usually use the same snapshot commit for model and tokenizer.
@@ -105,9 +109,28 @@ kubectl -n inference-lab exec deployment/qwen3 -- nvidia-smi
 ```
 
 Require successful non-streaming and streaming generation before benchmarking.
+Create the separate CPU client using [benchmark_client.yml](benchmark_client.yml)
+and the [benchmark runbook](BENCHMARK.md), including result export and cleanup.
 The ClusterIP has no public authentication boundary; use synthetic lab prompts.
 `/metrics` availability alone does not install a collector or GPU telemetry;
 complete section 7 before measuring load.
+
+After successful smoke tests, follow
+[section 7.3](../../../../docs/gcp/PHASE_1_INFERENCE_FIG.md#73-configure-managed-scraping-of-vllm)
+to configure vLLM scraping with [pod_monitoring.yml](pod_monitoring.yml).
+Managed Prometheus must be enabled and its `PodMonitoring` CRD available:
+
+```bash
+kubectl apply --dry-run=server -f infra/pocs/gcp_inference/serving/pod_monitoring.yml
+kubectl apply -f infra/pocs/gcp_inference/serving/pod_monitoring.yml
+kubectl -n inference-lab describe podmonitoring qwen3
+```
+
+The manifest selects `app: qwen3` in `inference-lab` and scrapes `/metrics` on
+the named `http` container port every 30 seconds. Keep that interval fixed
+across experiments and avoid duplicate scrape configurations. Complete section
+7's ingestion and GPU telemetry checks before benchmarking; applying this
+manifest alone does not verify collection.
 
 ## 5. Troubleshoot, update and remove
 
@@ -135,6 +158,7 @@ and apply, then repeat rollout checks and both smoke tests. Export logs and run
 artifacts before replacing or deleting the pod.
 
 ```bash
+kubectl delete -f infra/pocs/gcp_inference/serving/pod_monitoring.yml --ignore-not-found
 kubectl delete -f infra/pocs/gcp_inference/serving/service.yml
 kubectl delete -f infra/pocs/gcp_inference/serving/rendered/deployment.yml
 # Delete the dedicated namespace only after exporting all artifacts:

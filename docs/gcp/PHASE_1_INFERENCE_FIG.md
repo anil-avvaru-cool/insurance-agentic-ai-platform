@@ -144,6 +144,13 @@ Install the supported NVIDIA driver through the chosen GKE configuration and
 verify that Kubernetes advertises `nvidia.com/gpu` capacity.
 [GKE GPU node pool instructions](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/gpus).
 
+The GKE Terraform module enables system metrics, managed Prometheus and managed
+DCGM collection. Use GKE version 1.30.1-gke.1204000 or later and Google-managed
+GPU drivers (`DEFAULT` or `LATEST` in Terraform). Do not install a second DCGM
+exporter alongside the managed package. Include metric ingestion costs in the
+lab budget. See the
+[managed DCGM requirements and metric list](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/dcgm-metrics).
+
 Before applying infrastructure, run Terraform formatting, initialization,
 validation, and a saved plan in the new configuration directory. Inspect the
 plan's machine types, locations, counts and billable resources. Apply that saved
@@ -261,42 +268,210 @@ version.
 
 ## 7. Observability before load
 
-Scrape the serving `/metrics` endpoint using a Prometheus-compatible collector.
-Configure GPU telemetry using a supported GKE/DCGM collection path. Confirm real
-samples exist before benchmarking; enabling a collector alone is insufficient.
-Keep scrape interval and monitoring placement unchanged between comparisons.
+Use **Google Cloud Managed Service for Prometheus** for vLLM and the managed
+**GKE DCGM metrics package** for the L4. Complete these steps after section 6
+and before section 8. These are operator instructions; no collection or cloud
+changes have been verified by this document.
 
-Capture TTFT, inter-token latency, end-to-end latency, output throughput,
-running/waiting requests, KV-cache use, GPU utilization/memory, and pod/node RAM.
-Record exact metric names from the pinned release. Client streaming measurements
-include network effects; server metrics describe a different boundary. Preserve
-both and state which is used for each reported result.
-[vLLM production metrics](https://docs.vllm.ai/en/latest/usage/metrics.html).
+### 7.1 Check the cluster and existing collection
+
+Replace uppercase placeholders with values from the lab configuration. Run from
+the repository root; keep section 6's port-forward running in another terminal.
+
+```bash
+kubectl config current-context
+kubectl -n inference-lab get pods -l app=qwen3 -o wide
+gcloud container clusters describe CLUSTER_NAME \
+  --zone ZONE --project PROJECT_ID \
+  --format='yaml(currentMasterVersion,monitoringConfig,loggingConfig)'
+kubectl -n gmp-system get pods -o wide
+kubectl get clusterpodmonitorings
+kubectl get pods -A -o wide
+```
+
+- Require a ready `qwen3` pod and the intended lab context.
+- The checked-in GKE Terraform module enables managed Prometheus, system metrics,
+  DCGM collection and workload logs. Verify the live settings rather than relying
+  on defaults. Require a running managed GPU exporter on the GPU node and its
+  ClusterPodMonitoring resource; confirm fresh GPU samples in section 7.4.
+- Check collector placement and CPU/RAM overhead. Managed collectors run on
+  nodes, including the GPU node; record this overhead and keep it consistent.
+- The operator needs permission to update the cluster/apply Kubernetes resources
+  and view Monitoring data. Check collection identity permissions and egress if
+  metrics export fails.
+
+### 7.2 Verify the serving metrics endpoint
+
+```bash
+curl --fail-with-body http://127.0.0.1:8000/metrics -o /tmp/vllm_metrics_before.txt
+rg '^# (HELP|TYPE) vllm:|^vllm:' /tmp/vllm_metrics_before.txt
+```
+
+Require Prometheus text with vLLM series. Save the exact names, labels, units and
+histogram buckets from the pinned image. A successful local scrape proves the
+endpoint works; section 7.4 verifies ingestion. See
+[vLLM production metrics](https://docs.vllm.ai/en/latest/usage/metrics/).
+
+### 7.3 Configure managed scraping of vLLM
+
+The `PodMonitoring` resource lives in
+[serving/pod_monitoring.yml](../../infra/pocs/gcp_inference/serving/pod_monitoring.yml)
+and is applied separately from Terraform, as described in the
+[serving runbook](../../infra/pocs/gcp_inference/serving/README.md#4-check-inference).
+After the serving smoke tests pass, validate and apply it from the repository root:
+
+```bash
+kubectl apply --dry-run=server -f infra/pocs/gcp_inference/serving/pod_monitoring.yml
+kubectl apply -f infra/pocs/gcp_inference/serving/pod_monitoring.yml
+kubectl -n inference-lab describe podmonitoring qwen3
+```
+
+The manifest selects `app: qwen3` pods in `inference-lab` and scrapes `/metrics`
+on the named `http` container port (8000) every 30 seconds.
+Keep the 30-second interval unchanged across experiments. Do not create another
+scrape configuration for the same target. If the CRD is missing, resolve managed
+collection setup before continuing.
+[Managed collection setup](https://docs.cloud.google.com/stackdriver/docs/managed-prometheus/setup-managed).
+
+### 7.4 Confirm samples and verify the dashboard
+
+Terraform creates the custom dashboard during section 4, before workload
+deployment, from [inference.json.tftpl](../../infra/pocs/gcp_inference/dashboards/inference.json.tftpl).
+Keep `enable_dashboards = true` in the lab configuration. Charts remain empty
+until the workload and collection are running; dashboard creation does not pass
+the readiness gate. In Monitoring → Dashboards, open
+`PROJECT_NAME_ENVIRONMENT_inference`. The `dashboard_id` Terraform output records
+its resource ID. No dashboard creation script or import is required.
+
+Open **Google Cloud Console → Monitoring → Metrics Explorer** in the lab project.
+Select **PromQL**, use a recent time window, and run this combined serving query:
+
+```promql
+up{namespace="inference-lab",job="qwen3"} or
+vllm:num_requests_running{namespace="inference-lab"}
+```
+
+The `or` operator returns the union of both metrics' series; it does not add
+their values or require both metrics to exist. Confirm that both metrics are
+present and that `up = 1`.
+
+Run each GPU query separately:
+
+```promql
+DCGM_FI_DEV_GPU_UTIL{namespace="inference-lab"}
+```
+
+```promql
+DCGM_FI_DEV_FB_USED{namespace="inference-lab"}
+```
+
+Filter every query by the observed `cluster` and `location` labels when the
+project has multiple clusters. Require `up = 1` and fresh timestamps over several
+scrapes. If selectors return nothing, inspect the unfiltered series and actual
+labels; an empty result is not zero utilization. Allow collection/ingestion time.
+
+The provisioned dashboard includes the serving, GPU and RAM panels below.
+Restarts/failures are checked separately through the listed sources.
+Verify its queries against series confirmed in section 7.2 and the selected GKE
+version; change the template if the pinned release uses different names.
+For the older KV-cache name, set `dashboard_kv_cache_metric` in local
+`terraform.tfvars` and review/apply a new plan.
+
+| Panel | Metric or data source |
+| --- | --- |
+| Server TTFT / inter-token / end-to-end latency | `vllm:time_to_first_token_seconds`, `vllm:inter_token_latency_seconds`, `vllm:e2e_request_latency_seconds` histograms |
+| Server output tokens/second | Rate of `vllm:generation_tokens_total` |
+| Running / waiting requests | `vllm:num_requests_running`, `vllm:num_requests_waiting` |
+| KV-cache fraction | `vllm:kv_cache_usage_perc`; older releases may expose `vllm:gpu_cache_usage_perc` |
+| GPU utilization / allocated memory | `DCGM_FI_DEV_GPU_UTIL` (percent), `DCGM_FI_DEV_FB_USED` / `DCGM_FI_DEV_FB_TOTAL` (MB), per GPU |
+| Pod / node RAM | Metrics Explorer: `kubernetes.io/container/memory/used_bytes` and `kubernetes.io/node/memory/used_bytes`; filter lab resources |
+| Restarts / failures | Pod status, events, serving logs and benchmark error counts |
+
+Example PromQL for a five-minute diagnostic window:
+
+```promql
+histogram_quantile(0.95, sum by (le) (rate(vllm:time_to_first_token_seconds_bucket{namespace="inference-lab"}[5m])))
+sum(rate(vllm:generation_tokens_total{namespace="inference-lab"}[5m]))
+```
+
+The template includes project, cluster, location and namespace filters (node RAM
+uses the whole lab cluster). Preserve those filters when editing panels. Histogram quantiles
+are bucket estimates. A five-minute window can mix short benchmark runs; use
+client results for per-run percentiles and save server data for the exact UTC
+run window. Do not average percentiles or label server throughput as successful
+client throughput. Client streaming timing includes network effects; server
+metrics measure a different boundary. Preserve both.
+
+### 7.5 Exercise collection and pass the readiness gate
+
+1. Record the UTC start time (`date -u +%FT%TZ`), rerun section 6's streaming
+   request several times, and record the UTC end time. This is a telemetry check,
+   not a measured baseline.
+2. Scrape `/metrics` again to `/tmp/vllm_metrics_after.txt`. Require request/token
+   counters and latency histogram counts to increase for successful requests.
+3. Verify the same activity reaches Monitoring. Require valid per-GPU memory
+   and utilization samples; brief requests may fall between GPU samples, so use
+   a longer low-concurrency check if needed. Idle zero utilization is valid;
+   missing or invalid values are not.
+4. Inspect `kubectl -n inference-lab describe pods -l app=qwen3` and serving logs.
+   Require no unexplained restarts, OOMs, collection failures or memory pressure.
+5. Save the manifest, before/after scrapes, dashboard queries, metric units,
+   collector placement/intervals and exported time series in the dated experiment
+   artifacts. Preserve client streaming results alongside server telemetry.
+
+**Proceed to section 8 only when serving, GPU and RAM samples are present and
+current.** For missing data, check pod labels/port, PodMonitoring events,
+`gmp-system` collector logs, GPU exporter health, IAM and network egress. Fix the
+collection path and repeat this gate before increasing concurrency.
 
 ## 8. Baseline workload and measurement protocol
 
-| Workload | Target input tokens | Output cap | Total before any chat overhead |
+### 8.1 Confirm readiness
+
+- Pass section 7.5: serving, GPU and RAM telemetry must be current.
+- Run the benchmark client on the separate CPU pool. Keep the API, model/tokenizer
+  pins, template, thinking and serving settings fixed.
+- Record cold model download/load time separately from measured load.
+
+### 8.2 Set the workload matrix
+
+| Workload | Target input tokens | Output cap | Total before chat overhead |
 | --- | ---: | ---: | ---: |
 | Short prompt / short output | 128 | 128 | 256 |
 | Short prompt / long output | 128 | 512 | 640 |
 | Long prompt / short output | 2,048 | 128 | 2,176 |
 | Long prompt / long output | 2,048 | 512 | 2,560 |
 
-Run each shape with concurrency caps **1, 4, 16 and 32**: 16 cells. Start with
-200 measured requests per cell and three repetitions: 48 measured runs. Run 20
-unmeasured warmup requests before each run. If variability requires longer runs,
-increase counts consistently for both configurations and document the decision.
-Capture cold model download/load time separately.
+- Test each shape at concurrency caps **1, 4, 16 and 32**: **16 cells**.
+- Use **20 unmeasured warmup requests**, then **200 measured requests** per run.
+- Repeat each cell **three times**: **48 measured runs**. If variability requires
+  longer runs, increase counts consistently for both configurations and record why.
 
-Prepare and freeze a synthetic prompt corpus using the pinned tokenizer. Record
-actual lengths after rendering any chat template. Input plus requested output
-must remain within 4,096 tokens. Preserve the rendered prompts or token IDs,
-their checksum, and order. Use identical data and seeds for matched comparisons.
+### 8.3 Freeze the replay corpus
 
-Use `vllm bench serve` from a client matching the pinned serving version. Save
-its help output first and require `openai-responses` and `--extra-body` support.
-The following illustrates synthetic Responses load; validate flags with that version and save the generated corpus before
-claiming a frozen-corpus comparison:
+1. Generate synthetic prompts with the pinned tokenizer; save prompts, order,
+   seeds and checksum. Replay identical data for matched comparisons.
+2. Record actual lengths after chat templating; input plus requested output must
+   fit within **4,096 tokens**.
+3. Send unrendered user content to avoid double templating. Save rendered prompts
+   or token IDs alongside the replay corpus.
+4. Fix sampling/EOS settings: use supported ignore-EOS behavior or early stopping
+   consistently, and report actual generated tokens.
+
+### 8.4 Validate the benchmark command
+
+Create the CPU client using [benchmark_client.yml](../../infra/pocs/gcp_inference/serving/benchmark_client.yml)
+and the [benchmark runbook](../../infra/pocs/gcp_inference/serving/BENCHMARK.md).
+It covers image pinning, rendering, apply, CPU placement, CLI/connectivity checks,
+pinned tokenizer download, result export and cleanup. The client is a **pod on
+the CPU node pool**. From your local terminal, enter its container (no node SSH):
+
+```bash
+kubectl -n inference-lab exec -it deployment/benchmark-client -- /bin/bash
+```
+
+Inside that shell, use `vllm bench serve` matching the pinned server version.
+Save its help output and require `openai-responses` and `--extra-body` support:
 
 ```bash
 vllm bench serve --help
@@ -305,50 +480,68 @@ vllm bench serve \
   --base-url http://qwen3.inference-lab.svc.cluster.local:8000 \
   --endpoint /v1/responses \
   --model Qwen/Qwen3-4B \
+  --tokenizer /client_cache/tokenizer \
   --dataset-name random \
   --random-input-len 128 --random-output-len 128 \
   --num-prompts 200 --seed 42 \
   --request-rate inf --max-concurrency 1 \
   --extra-body '{"temperature":0.7,"top_p":0.8,"top_k":20,"store":false,"chat_template_kwargs":{"enable_thinking":false}}' \
-  --save-result --save-detailed
+  --save-result --save-detailed \
+  --result-dir /results --result-filename validation.json
 ```
 
-Execute this inside the CPU benchmark client; cluster DNS is not available from
-an ordinary local terminal. Adapt the supported dataset loader to replay the
-frozen corpus for measured runs. Inspect a sample request to verify that the
-client sends Responses `input`, `stream: true`, and `max_output_tokens` matching
-each workload's output cap. The extra body preserves the smoke-test sampling,
-thinking, and storage settings. Do not put a fixed `max_output_tokens` in the
-extra body, because the workload output caps vary.
+- Treat this as a synthetic validation example. For measured runs, adapt a
+  supported dataset loader to replay section 8.3's frozen corpus. Random data
+  alone does not establish a frozen-corpus comparison or represent insurance traffic.
+- Inspect a sample request: require Responses `input`, `stream: true` and
+  `max_output_tokens` matching the workload cap. Preserve the shown generation
+  settings; do not fix `max_output_tokens` in `--extra-body`.
+- Adjust input length, output cap and concurrency for each cell; save the exact
+  command and corpus reference. Validate flags against the pinned version.
+- Use the internal service address only inside the cluster; cluster DNS is
+  unavailable from an ordinary local terminal.
+  [vLLM benchmark CLI](https://docs.vllm.ai/en/latest/cli/bench/serve/).
 
-Send unrendered user content to the endpoint and verify actual token counts after
-the server applies the pinned chat template. Configure any client-side dataset
-rendering to avoid applying the template twice. Preserve rendered prompts/token
-IDs as evidence, alongside the unrendered corpus used for replay. Keep the API,
-template, and thinking setting unchanged between baseline and candidate.
-Optional raw-completion measurements must be labeled separately and cannot
-replace this Responses baseline.
+### 8.5 Run each cell
 
-Explicitly record sampling/EOS defaults used by the benchmark. Decide whether to
-force the synthetic output length with supported ignore-EOS behavior or allow
-early stopping; use the same decision on both sides and report actual generated
-tokens. The random example alone is not a representative insurance workload.
-[vLLM benchmark CLI](https://docs.vllm.ai/en/latest/cli/bench/serve/).
+1. Start at concurrency **1**, then increase to **4, 16 and 32** while memory
+   and errors permit. Assign each run a unique ID and save its configuration.
+2. Run **20 warmup requests** with the same workload; exclude them from results.
+3. Record UTC start time (`date -u +%FT%TZ`), run **200 measured requests**,
+   then record UTC end time. Repeat **three times per cell**.
+4. Capture achieved concurrency, request rate, duration, errors and timeouts;
+   verify the CPU client is not saturated.
+5. Stop runs that repeatedly OOM. Retain failed, skipped and saturated cells
+   with their reasons instead of omitting them.
 
-The infinite request rate with a concurrency cap measures bounded concurrent
-load, not a production arrival distribution. Record achieved concurrency,
-request rate, duration, errors and timeouts. Check that the CPU client is not
-saturated. Preserve failed/saturated cells and stop a run that repeatedly OOMs;
-do not silently omit it or report the target cap as achieved concurrency.
+`--request-rate inf` with a concurrency cap measures bounded concurrent load,
+not production arrivals. Report achieved concurrency separately from the cap.
 
-Use streaming for client-side TTFT and inter-token timing. Report p50/p95
-end-to-end latency, latency distributions, successful output tokens/second and
-run-to-run variability. Average time per output token and individual inter-token
-latencies are different statistics; label the benchmark's actual outputs.
+### 8.6 Save and review the baseline
+
+- Save raw/detailed client results, commands, corpus evidence, logs and
+  server/GPU/RAM telemetry for each exact UTC run window.
+- Report streaming TTFT and inter-token timing, p50/p95 end-to-end latency,
+  latency distributions, successful output tokens/second and run-to-run variability.
+- Keep average time per output token separate from individual inter-token
+  latencies, and client measurements separate from server measurements.
+- Label optional raw-completion results separately; they cannot replace the
+  Responses baseline.
+- Complete section 11's evidence and cost checklist, then choose an experiment
+  in section 9.
 
 ## 9. Choose one controlled experiment
 
-Write the hypothesis before editing the serving configuration. Select one:
+### 9.1 Review baseline evidence
+
+- Use section 8's results to identify queueing, poor throughput, prefill delays
+  or repeated shared input prefixes.
+- Select the workload cells that demonstrate the issue; retain errors and
+  run-to-run variability as evidence.
+
+### 9.2 Choose one experiment
+
+Select one change using the baseline evidence:
 
 | Baseline observation | Candidate experiment | Required control |
 | --- | --- | --- |
@@ -356,21 +549,54 @@ Write the hypothesis before editing the serving configuration. Select one:
 | Repeated shared input prefixes | Compare prefix caching off/on | Same shared-prefix corpus and cache warmup |
 | Long prefills delay decode | Tune chunked-prefill token budget | Same mixed-length request order |
 
-Check release defaults first. V1 chunked prefill is enabled by default where
-possible; enabling an already active feature is not a measured change.
+- Check the pinned release's effective settings and defaults first. Enabling an
+  already active feature is not a measured change.
+- For batching, choose one alternative after inspecting the baseline; a larger
+  budget is not automatically better.
+
 [vLLM tuning documentation](https://docs.vllm.ai/en/latest/configuration/optimization/).
 
-For batching, choose one alternative after inspecting the baseline rather than
-guessing that a larger budget is better. For prefix caching, freeze the dedicated
-shared-prefix corpus for both configurations, restart/reset cache consistently,
-and separate cold-cache from warm-cache results. Do not compare a generic
-baseline corpus against a new shared-prefix corpus as evidence of improvement.
+### 9.3 Record the hypothesis and success criteria
 
-Restart the replica if the setting requires it, rerun smoke tests, and use the
-same warmup and measurement protocol. Repeat the full matrix for a general
-batching change; for a targeted cache/mixed-prompt experiment, repeat the defined
-target workload on both sides and state the narrower scope. Alternate baseline
-and candidate runs when practical to expose temporal variation.
+- Before editing configuration, record the baseline value, candidate value and
+  expected benefit.
+- Define the primary metric, target improvement and acceptable latency/error
+  tradeoffs before running the comparison.
+
+### 9.4 Freeze the comparison workload
+
+- Keep hardware, model/tokenizer and image pins, sampling, corpus, request order
+  and concurrency identical between configurations.
+- For prefix caching, freeze a dedicated shared-prefix corpus for both sides;
+  restart/reset cache consistently and separate cold-cache from warm-cache results.
+- For mixed-length requests, preserve the same request order. Record the target
+  workload and scope; a new corpus requires a matching baseline run.
+
+### 9.5 Apply and validate the candidate
+
+- Change only the selected serving setting and save the full configuration.
+- Restart the replica if required, rerun section 6's smoke tests and confirm
+  current serving, GPU and RAM telemetry using section 7's readiness gate.
+
+### 9.6 Repeat matched measurements
+
+- Follow section 8: **20 unmeasured warmup requests**, **200 measured requests**
+  and **three repetitions per cell**, with identical procedures on both sides.
+- Repeat the full matrix for a general batching change. For a targeted cache or
+  mixed-prompt experiment, repeat the defined target workload on both sides and
+  state the narrower scope.
+- Alternate baseline and candidate runs when practical to expose temporal
+  variation. Save unique run IDs, exact UTC windows, raw results and telemetry;
+  retain failed and skipped cells with reasons.
+
+### 9.7 Compare and record the outcome
+
+- Use section 11 to compare throughput, latency, errors, memory, variability
+  and cost against the predefined success criteria.
+- Report gains, regressions and workload limitations; a repeatable regression
+  is a valid result.
+- Retain the better-supported configuration and record the decision and its
+  full startup arguments in the experiment report.
 
 ## 10. Two-GPU learning lab
 
@@ -465,7 +691,9 @@ Do not claim model quality improvement from serving benchmarks alone.
 1. Export artifacts and record the experiment's end time.
 2. Stop benchmark jobs and local port-forwards.
 3. Generate and review a Terraform destroy plan in the dedicated lab state;
-   destroy only resources owned by that configuration.
+   destroy only resources owned by that configuration, including its dashboard.
+   For dashboard-only deletion, set `enable_dashboards = false` and follow the
+   [dashboard cleanup instructions](../../infra/pocs/gcp_inference/README.md#cleanup).
 4. Verify the GKE cluster and GPU/CPU nodes are gone. Inspect disks, snapshots,
    external addresses, load balancers, buckets and retained monitoring/log data.
 5. Remove separately created lab resources when no longer needed and record any

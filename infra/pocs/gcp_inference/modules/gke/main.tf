@@ -38,10 +38,10 @@ resource "google_container_cluster" "lab" {
   }
   workload_identity_config { workload_pool = "${var.project_id}.svc.id.goog" }
   logging_config {
-    enable_components = ["SYSTEM_COMPONENTS","WORKLOADS"]    
+    enable_components = ["SYSTEM_COMPONENTS", "WORKLOADS"]
   }
   monitoring_config {
-    enable_components = ["SYSTEM_COMPONENTS"]
+    enable_components = ["SYSTEM_COMPONENTS", "DCGM"]
     managed_prometheus { enabled = true }
   }
   node_config {

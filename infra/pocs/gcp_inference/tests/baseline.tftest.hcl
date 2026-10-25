@@ -115,3 +115,38 @@ run "root_wiring" {
     error_message = "The credentials command must target the selected project and zone."
   }
 }
+
+run "dashboard_before_workload" {
+  command = plan
+  assert {
+    condition     = length(google_monitoring_dashboard.inference) == 1 && length(jsondecode(google_monitoring_dashboard.inference[0].dashboard_json).gridLayout.widgets) == 12
+    error_message = "Provision the dashboard and all panels without Kubernetes resources."
+  }
+  assert {
+    condition = alltrue([for widget in jsondecode(google_monitoring_dashboard.inference[0].dashboard_json).gridLayout.widgets : alltrue([
+      for dataset in try(widget.xyChart.dataSets, []) :
+      strcontains(try(dataset.timeSeriesQuery.prometheusQuery, dataset.timeSeriesQuery.timeSeriesFilter.filter), var.project_id) &&
+      strcontains(try(dataset.timeSeriesQuery.prometheusQuery, dataset.timeSeriesQuery.timeSeriesFilter.filter), "inference-lab-development-gke") &&
+      strcontains(try(dataset.timeSeriesQuery.prometheusQuery, dataset.timeSeriesQuery.timeSeriesFilter.filter), var.zone)
+    ])])
+    error_message = "Every chart query must be scoped to the lab project, cluster and location."
+  }
+}
+
+run "dashboard_disabled" {
+  command = plan
+  variables { enable_dashboards = false }
+  assert {
+    condition     = length(google_monitoring_dashboard.inference) == 0 && output.dashboard_id == null
+    error_message = "Disabling dashboards must omit the resource and its ID."
+  }
+}
+
+run "legacy_cache_metric" {
+  command = plan
+  variables { dashboard_kv_cache_metric = "vllm:gpu_cache_usage_perc" }
+  assert {
+    condition     = strcontains(jsondecode(google_monitoring_dashboard.inference[0].dashboard_json).gridLayout.widgets[6].xyChart.dataSets[0].timeSeriesQuery.prometheusQuery, "vllm:gpu_cache_usage_perc{")
+    error_message = "The dashboard must support the pinned release's legacy cache metric."
+  }
+}

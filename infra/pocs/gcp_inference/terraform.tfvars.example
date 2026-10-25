@@ -5,6 +5,10 @@ project_name = "inference_lab"
 environment  = "development"
 owner        = "insurance_platform_team"
 
+# Created before workload deployment; charts populate after metric collection.
+enable_dashboards        = true
+dashboard_kv_cache_metric = "vllm:kv_cache_usage_perc"
+
 # Candidate location supports G2; verify project quota and live capacity.
 region = "us-central1"
 zone   = "us-central1-a"

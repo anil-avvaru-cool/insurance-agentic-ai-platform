@@ -2,7 +2,8 @@
 
 Terraform for section 4 of the [inference guide](../../../docs/gcp/PHASE_1_INFERENCE_FIG.md).
 Creates a zonal GKE Standard cluster, one CPU node, one L4 node, dedicated VPC,
-private nodes, Cloud NAT, node service account/IAM, and managed Prometheus.
+private nodes, Cloud NAT, node service account/IAM, managed Prometheus, and a
+custom Monitoring dashboard.
 Serving manifests, metric scrape resources, GPU telemetry and benchmarks follow
 in sections 5–8; enabling Prometheus alone does not collect those metrics.
 
@@ -13,7 +14,8 @@ in sections 5–8; enabling Prometheus alone does not collect those metrics.
 - Copy `gcp.s3.tfbackend.example` to ignored `gcp.s3.tfbackend`; supply the verified
   shared bucket and AWS account ID. Keep the dedicated GCP state key.
 - Existing project must have billing enabled. The operator needs permission to
-  enable APIs, manage networking/GKE/service accounts and grant project IAM.
+  enable APIs, manage networking/GKE/service accounts, grant project IAM and
+  create/update/delete Monitoring dashboards.
 - Authenticate AWS for S3 and Google Application Default Credentials for Terraform:
 
 ```bash
@@ -84,6 +86,38 @@ balancer or public inference endpoint is provisioned.
 
 ## Cleanup
 
+The dashboard is created with infrastructure, before Kubernetes workloads.
+Its JSON template is `dashboards/inference.json.tftpl`; queries select the
+configured project, cluster, zone and serving namespace `inference-lab`.
+Charts show no data until collection starts. Get its resource ID with:
+
+```bash
+terraform -chdir=infra/pocs/gcp_inference output -raw dashboard_id
+```
+
+Open Monitoring → Dashboards and select the dashboard named
+`PROJECT_NAME_ENVIRONMENT_inference`. Verify metric names against the pinned
+vLLM release; set `dashboard_kv_cache_metric = "vllm:gpu_cache_usage_perc"` in
+local `terraform.tfvars` only if the older metric is exposed. Node RAM includes
+both lab node pools; container RAM selects the serving namespace. GPU series
+remain separate per GPU. Check restarts, events, logs and benchmark errors
+separately. Creating the dashboard does not verify collection.
+
+To delete only the Terraform-owned dashboard, set `enable_dashboards = false`
+in ignored `terraform.tfvars`, then review and apply:
+
+```bash
+terraform -chdir=infra/pocs/gcp_inference plan -out=dashboard_cleanup.tfplan
+terraform -chdir=infra/pocs/gcp_inference show dashboard_cleanup.tfplan
+terraform -chdir=infra/pocs/gcp_inference apply dashboard_cleanup.tfplan
+```
+
+Require the plan to delete only the dashboard before applying. Keep the setting
+false to prevent recreation. Dashboard deletion does not disable metric collection.
+Manually created copies are not managed by this state; import them separately
+if Terraform must own their lifecycle. No create script or import is needed for
+the dashboard created by this root.
+
 Export experiment artifacts first, then review and apply a dedicated destroy plan:
 
 ```bash
@@ -92,7 +126,8 @@ terraform -chdir=infra/pocs/gcp_inference show destroy.tfplan
 terraform -chdir=infra/pocs/gcp_inference apply destroy.tfplan
 ```
 
-Verify cluster, nodes, disks and NAT are gone and check delayed billing. Enabled
+Full POC destruction also deletes the Terraform-owned dashboard.
+Verify dashboard, cluster, nodes, disks and NAT are gone and check delayed billing. Enabled
 project APIs intentionally remain enabled; the existing project and shared AWS
 state bucket are not owned or destroyed by this root.
 

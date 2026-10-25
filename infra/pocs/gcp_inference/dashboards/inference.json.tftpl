@@ -1,0 +1,226 @@
+{
+  "displayName": ${jsonencode(display_name)},
+  "gridLayout": {
+    "columns": 2,
+    "widgets": [
+      {
+        "title": "Serving scrape health",
+        "xyChart": {
+          "dataSets": [
+            {
+              "timeSeriesQuery": {
+                "prometheusQuery": ${jsonencode("up{project_id=\"${project_id}\",cluster=\"${cluster_name}\",location=\"${location}\",namespace=\"${namespace}\",job=\"qwen3\"}")}
+              },
+              "plotType": "LINE"
+            }
+          ],
+          "yAxis": {
+            "label": "up",
+            "scale": "LINEAR"
+          }
+        }
+      },
+      {
+        "title": "TTFT p95 (5 minute window)",
+        "xyChart": {
+          "dataSets": [
+            {
+              "timeSeriesQuery": {
+                "prometheusQuery": ${jsonencode("histogram_quantile(0.95, sum by (le) (rate(vllm:time_to_first_token_seconds_bucket{project_id=\"${project_id}\",cluster=\"${cluster_name}\",location=\"${location}\",namespace=\"${namespace}\"}[5m])))")}
+              },
+              "plotType": "LINE"
+            }
+          ],
+          "yAxis": {
+            "label": "seconds",
+            "scale": "LINEAR"
+          }
+        }
+      },
+      {
+        "title": "Inter_token latency p95 (5 minute window)",
+        "xyChart": {
+          "dataSets": [
+            {
+              "timeSeriesQuery": {
+                "prometheusQuery": ${jsonencode("histogram_quantile(0.95, sum by (le) (rate(vllm:inter_token_latency_seconds_bucket{project_id=\"${project_id}\",cluster=\"${cluster_name}\",location=\"${location}\",namespace=\"${namespace}\"}[5m])))")}
+              },
+              "plotType": "LINE"
+            }
+          ],
+          "yAxis": {
+            "label": "seconds",
+            "scale": "LINEAR"
+          }
+        }
+      },
+      {
+        "title": "End_to_end latency p95 (5 minute window)",
+        "xyChart": {
+          "dataSets": [
+            {
+              "timeSeriesQuery": {
+                "prometheusQuery": ${jsonencode("histogram_quantile(0.95, sum by (le) (rate(vllm:e2e_request_latency_seconds_bucket{project_id=\"${project_id}\",cluster=\"${cluster_name}\",location=\"${location}\",namespace=\"${namespace}\"}[5m])))")}
+              },
+              "plotType": "LINE"
+            }
+          ],
+          "yAxis": {
+            "label": "seconds",
+            "scale": "LINEAR"
+          }
+        }
+      },
+      {
+        "title": "Server output tokens per second",
+        "xyChart": {
+          "dataSets": [
+            {
+              "timeSeriesQuery": {
+                "prometheusQuery": ${jsonencode("sum(rate(vllm:generation_tokens_total{project_id=\"${project_id}\",cluster=\"${cluster_name}\",location=\"${location}\",namespace=\"${namespace}\"}[5m]))")}
+              },
+              "plotType": "LINE"
+            }
+          ],
+          "yAxis": {
+            "label": "tokens/second",
+            "scale": "LINEAR"
+          }
+        }
+      },
+      {
+        "title": "Running and waiting requests",
+        "xyChart": {
+          "dataSets": [
+            {
+              "timeSeriesQuery": {
+                "prometheusQuery": ${jsonencode("vllm:num_requests_running{project_id=\"${project_id}\",cluster=\"${cluster_name}\",location=\"${location}\",namespace=\"${namespace}\"}")}
+              },
+              "plotType": "LINE"
+            },
+            {
+              "timeSeriesQuery": {
+                "prometheusQuery": ${jsonencode("vllm:num_requests_waiting{project_id=\"${project_id}\",cluster=\"${cluster_name}\",location=\"${location}\",namespace=\"${namespace}\"}")}
+              },
+              "plotType": "LINE"
+            }
+          ],
+          "yAxis": {
+            "label": "requests",
+            "scale": "LINEAR"
+          }
+        }
+      },
+      {
+        "title": "KV_cache fraction",
+        "xyChart": {
+          "dataSets": [
+            {
+              "timeSeriesQuery": {
+                "prometheusQuery": ${jsonencode("${kv_cache_metric}{project_id=\"${project_id}\",cluster=\"${cluster_name}\",location=\"${location}\",namespace=\"${namespace}\"}")}
+              },
+              "plotType": "LINE"
+            }
+          ],
+          "yAxis": {
+            "label": "fraction (0 to 1)",
+            "scale": "LINEAR"
+          }
+        }
+      },
+      {
+        "title": "GPU utilization per GPU",
+        "xyChart": {
+          "dataSets": [
+            {
+              "timeSeriesQuery": {
+                "prometheusQuery": ${jsonencode("DCGM_FI_DEV_GPU_UTIL{project_id=\"${project_id}\",cluster=\"${cluster_name}\",location=\"${location}\",namespace=\"${namespace}\"}")}
+              },
+              "plotType": "LINE"
+            }
+          ],
+          "yAxis": {
+            "label": "percent",
+            "scale": "LINEAR"
+          }
+        }
+      },
+      {
+        "title": "GPU used and total memory per GPU",
+        "xyChart": {
+          "dataSets": [
+            {
+              "timeSeriesQuery": {
+                "prometheusQuery": ${jsonencode("DCGM_FI_DEV_FB_USED{project_id=\"${project_id}\",cluster=\"${cluster_name}\",location=\"${location}\",namespace=\"${namespace}\"}")}
+              },
+              "plotType": "LINE"
+            },
+            {
+              "timeSeriesQuery": {
+                "prometheusQuery": ${jsonencode("DCGM_FI_DEV_FB_TOTAL{project_id=\"${project_id}\",cluster=\"${cluster_name}\",location=\"${location}\",namespace=\"${namespace}\"}")}
+              },
+              "plotType": "LINE"
+            }
+          ],
+          "yAxis": {
+            "label": "MB",
+            "scale": "LINEAR"
+          }
+        }
+      },
+      {
+        "title": "Container RAM",
+        "xyChart": {
+          "dataSets": [
+            {
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": ${jsonencode("resource.type=\"k8s_container\" AND metric.type=\"kubernetes.io/container/memory/used_bytes\" AND resource.labels.project_id=\"${project_id}\" AND resource.labels.cluster_name=\"${cluster_name}\" AND resource.labels.location=\"${location}\" AND resource.labels.namespace_name=\"${namespace}\"")},
+                  "aggregation": {
+                    "alignmentPeriod": "60s",
+                    "perSeriesAligner": "ALIGN_MAX"
+                  }
+                }
+              },
+              "plotType": "LINE"
+            }
+          ],
+          "yAxis": {
+            "label": "bytes",
+            "scale": "LINEAR"
+          }
+        }
+      },
+      {
+        "title": "Node RAM",
+        "xyChart": {
+          "dataSets": [
+            {
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": ${jsonencode("resource.type=\"k8s_node\" AND metric.type=\"kubernetes.io/node/memory/used_bytes\" AND resource.labels.project_id=\"${project_id}\" AND resource.labels.cluster_name=\"${cluster_name}\" AND resource.labels.location=\"${location}\"")},
+                  "aggregation": {
+                    "alignmentPeriod": "60s",
+                    "perSeriesAligner": "ALIGN_MAX"
+                  }
+                }
+              },
+              "plotType": "LINE"
+            }
+          ],
+          "yAxis": {
+            "label": "bytes",
+            "scale": "LINEAR"
+          }
+        }
+      },
+      {
+        "title": "Readiness and failures",
+        "text": {
+          "format": "MARKDOWN",
+          "content": "Charts remain empty until deployment and collection. Missing data is not zero. Confirm fresh samples and up = 1 before load. Check pod events, restarts, OOMs, serving logs and benchmark errors separately. Server p95 uses a rolling 5 minute window; use client artifacts for per_run results."
+        }
+      }
+    ]
+  }
+}

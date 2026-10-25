@@ -1,0 +1,54 @@
+# Render with the explicit envsubst list in BENCHMARK.md before applying.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: benchmark-client
+  namespace: inference-lab
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: benchmark-client
+  template:
+    metadata:
+      labels:
+        app: benchmark-client
+    spec:
+      automountServiceAccountToken: false
+      nodeSelector:
+        workload: cpu
+      containers:
+        - name: benchmark-client
+          image: "${BENCHMARK_IMAGE}"
+          command: [python3, -c]
+          args:
+            - "import time; time.sleep(2147483647)"
+          workingDir: /results
+          env:
+            - name: TOKENIZER_COMMIT
+              value: "${TOKENIZER_COMMIT}"
+            - name: HF_HOME
+              value: /client_cache
+          resources:
+            requests:
+              cpu: "1"
+              memory: 2Gi
+              ephemeral-storage: 2Gi
+            limits:
+              cpu: "2"
+              memory: 4Gi
+              ephemeral-storage: 8Gi
+          volumeMounts:
+            - name: results
+              mountPath: /results
+            - name: client-cache
+              mountPath: /client_cache
+      volumes:
+        - name: results
+          emptyDir:
+            sizeLimit: 2Gi
+        - name: client-cache
+          emptyDir:
+            sizeLimit: 4Gi

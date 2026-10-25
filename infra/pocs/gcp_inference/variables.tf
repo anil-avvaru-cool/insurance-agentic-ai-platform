@@ -125,3 +125,18 @@ variable "master_authorized_cidrs" {
     error_message = "Replace the example address with your restricted operator IPv4 CIDR."
   }
 }
+variable "enable_dashboards" {
+  description = "Create the POC dashboard; set false and apply to delete it while retaining GKE."
+  type        = bool
+  default     = true
+}
+
+variable "dashboard_kv_cache_metric" {
+  description = "Select the KV cache metric exposed by the pinned vLLM release."
+  type        = string
+  default     = "vllm:kv_cache_usage_perc"
+  validation {
+    condition     = contains(["vllm:kv_cache_usage_perc", "vllm:gpu_cache_usage_perc"], var.dashboard_kv_cache_metric)
+    error_message = "Select the current or legacy vLLM KV cache metric."
+  }
+}

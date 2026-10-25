@@ -1,0 +1,13 @@
+apiVersion: monitoring.googleapis.com/v1
+kind: PodMonitoring
+metadata:
+  name: qwen3
+  namespace: inference-lab
+spec:
+  selector:
+    matchLabels:
+      app: qwen3
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
