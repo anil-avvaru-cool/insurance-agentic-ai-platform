@@ -21,6 +21,10 @@ User needs to review before commit
 ## Model access:
 Prefer cloud-managed service such as AWS Bedrock, Azure AI Foundry, or Google Cloud Vertex instead of direct model-vendor APIs when possible.
 Inference frameworks like vllm can be used.
+Follow docs/adr/0003_controlled_self_hosted_inference.md for self-hosted inference:
+approved isolated experiments and gateway/routing experiments use synthetic/public
+evaluation data; insurance application integration requires separate acceptance.
+Direct model-vendor APIs remain prohibited under ADR 0002 as amended by ADR 0003.
 
 ## Documentation:
 Keep it short and scannable. Use bullet points and the exact commands needed, not long prose.

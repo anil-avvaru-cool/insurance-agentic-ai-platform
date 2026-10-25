@@ -1,6 +1,6 @@
 # Insurance Agentic AI Platform — Architecture
 
-Model access is governed by [ADR 0002](adr/0002_cloud_managed_model_access.md): all inference must use a cloud-managed service. The application uses AWS Bedrock Converse; direct model-vendor APIs are prohibited. Model quality remains subject to live evaluation.
+Model access is governed by [ADR 0002](adr/0002_cloud_managed_model_access.md), as amended by [ADR 0003](adr/0003_controlled_self_hosted_inference.md): cloud-managed inference remains the application default, with a scoped self-hosted inference exception for isolated experiments and gateway/routing experiments. Application integration requires separate acceptance. The application uses AWS Bedrock Converse; direct model-vendor APIs are prohibited. Model quality remains subject to live evaluation.
 
 **Status:** Proposed reference architecture; no infrastructure deployed.  
 **Scope:** Enterprise insurance across vehicle and property lines.  

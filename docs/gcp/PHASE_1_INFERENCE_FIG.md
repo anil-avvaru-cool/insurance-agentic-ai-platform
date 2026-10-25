@@ -34,7 +34,9 @@ No GCP deployment or performance result is claimed by this document.
 - Keep account IDs, bucket names, endpoints, credentials and raw state out of
   this guide; supply deployment values through ignored local configuration.
 - [Agents.md](../../Agents.md) prefers cloud-managed model services and explicitly
-  allows inference frameworks such as vLLM. This GKE/vLLM lab is permitted.
+  allows inference frameworks such as vLLM. This GKE/vLLM lab is permitted under
+  [ADR 0003](../adr/0003_controlled_self_hosted_inference.md), subject to deployment
+  registration, synthetic/public evaluation data and the documented access controls.
 
 After recreating and configuring the shared backend, inspect each initialized
 root's state. State describes Terraform's last saved view; it does not prove

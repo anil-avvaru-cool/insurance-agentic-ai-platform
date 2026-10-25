@@ -1,11 +1,13 @@
 # ADR 0002: Cloud-managed model access only
 
 Date: 2026-09-19  
-Status: Accepted; supersedes ADR 0001's direct-provider selection.
+Status: Accepted; supersedes ADR 0001's direct-provider selection. Amended by
+[ADR 0003](0003_controlled_self_hosted_inference.md) for controlled self-hosted
+inference experiments and gated integration.
 
 ## Decision
 
-All generation and embedding inference must use a cloud-managed service, such
+Except for the scoped exception in ADR 0003, all generation and embedding inference must use a cloud-managed service, such
 as AWS Bedrock, Azure AI Foundry, or Google Cloud Vertex AI. Direct model-vendor
 APIs are prohibited, including as a fallback. Hosting the application on a
 cloud does not satisfy this requirement if inference leaves for a direct API.
